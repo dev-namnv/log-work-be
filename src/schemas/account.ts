@@ -15,9 +15,7 @@ export const ACCOUNT_FIELD_SELECTS = [
   'avatar',
   'role',
   'email',
-  'languages',
   'metadata',
-  'credits',
   'isVerified',
   'createdAt',
   'updatedAt',
@@ -62,17 +60,6 @@ export class Account extends Document {
   @Prop({ enum: AccountRole, default: AccountRole.USER })
   @ApiProperty({ enum: AccountRole })
   role: AccountRole;
-
-  @Prop({ default: ['english'] })
-  @ApiProperty({ type: [String] })
-  languages: string[];
-
-  @Prop({ default: 0 })
-  @ApiProperty({
-    description: 'Free credits per month (For download/translate)',
-    default: 10,
-  })
-  credits: number;
 
   @Prop({ default: true })
   isActivated: boolean;

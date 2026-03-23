@@ -5,6 +5,7 @@ export enum NoticeType {
   REGISTERED = 'Registered',
   APPLICATION = 'Application',
   ERROR = 'Error',
+  WORK_LOG = 'Work Log',
 }
 
 export enum NoticeVariant {

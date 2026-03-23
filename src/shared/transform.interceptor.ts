@@ -38,9 +38,7 @@ export class TransformInterceptor<T>
 
     return next.handle().pipe(
       map((data) => {
-        const responseData = { statusCode, content: data };
-
-        return responseData;
+        return data;
       }),
     );
   }
