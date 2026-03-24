@@ -21,7 +21,7 @@ export class WorkLog extends Document {
   @Prop({ required: true })
   checkIn: Date;
 
-  @Prop({ required: true })
+  @Prop({ default: null })
   checkOut: Date;
 
   /** Computed and stored: differenceInMinutes(checkOut, checkIn) / 60 */

@@ -10,6 +10,7 @@ import {
   eachDayOfInterval,
   endOfMonth,
   getDay,
+  startOfDay,
   startOfMonth,
 } from 'date-fns';
 import { FilterQuery, Model, Types } from 'mongoose';
@@ -63,9 +64,9 @@ export class WorkLogService {
     }
 
     const checkIn = new Date(dto.checkIn);
-    const checkOut = new Date(dto.checkOut);
+    const checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
 
-    if (checkOut <= checkIn) {
+    if (checkOut && checkOut <= checkIn) {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
@@ -91,8 +92,11 @@ export class WorkLogService {
       );
     }
 
-    const hours =
-      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100;
+    const hours = this.getWorkedHoursByDay({
+      checkIn,
+      checkOut,
+      breakMinutes: org.workSchedule.lunchBreakMinutes,
+    });
 
     return this.workLogModel.create({
       account: account._id,
@@ -110,6 +114,13 @@ export class WorkLogService {
     dto: SearchWorkLogDto,
   ): Promise<PaginationResponse<WorkLog>> {
     const filterQuery: FilterQuery<WorkLog> = { account: account._id };
+    if (dto.organizationId) {
+      filterQuery.organization = new Types.ObjectId(dto.organizationId);
+    }
+    if (dto.date) {
+      filterQuery.date = startOfDay(new Date(dto.date));
+    }
+
     const { keyword, page, limit, match, skip, sort } =
       PaginationUtil.getQueryByPagination(dto, filterQuery);
 
@@ -153,6 +164,10 @@ export class WorkLogService {
     if (log.account.toString() !== account._id.toString()) {
       throw new ForbiddenException('Access denied');
     }
+    const organization = await this.organizationModel.findById(
+      log.organization,
+    );
+    if (!organization) throw new NotFoundException('Organization not found');
 
     const checkIn = dto.checkIn ? new Date(dto.checkIn) : log.checkIn;
     const checkOut = dto.checkOut ? new Date(dto.checkOut) : log.checkOut;
@@ -161,8 +176,11 @@ export class WorkLogService {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
-    const hours =
-      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100;
+    const hours = this.getWorkedHoursByDay({
+      checkIn,
+      checkOut,
+      breakMinutes: organization.workSchedule.lunchBreakMinutes,
+    });
 
     const updatePayload: Partial<WorkLog> = { hours, checkIn, checkOut };
     if (dto.note !== undefined) updatePayload.note = dto.note;
@@ -330,5 +348,18 @@ export class WorkLogService {
       totalStandardHours,
       members: memberReports,
     };
+  }
+
+  private getWorkedHoursByDay(params: {
+    checkIn: Date;
+    checkOut: Date | null;
+    breakMinutes: number;
+  }): number {
+    const { checkIn, checkOut } = params;
+    if (!checkOut) return 0;
+    return (
+      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100 -
+      params.breakMinutes / 60
+    );
   }
 }

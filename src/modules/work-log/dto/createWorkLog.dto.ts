@@ -25,8 +25,8 @@ export class CreateWorkLogDto {
     example: '2026-03-23T17:30:00.000Z',
     description: 'Check-out datetime (ISO 8601), must be after checkIn',
   })
-  @IsNotEmpty()
   @IsDateString()
+  @IsOptional()
   checkOut: string;
 
   @ApiProperty({ required: false })

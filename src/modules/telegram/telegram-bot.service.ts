@@ -84,6 +84,10 @@ export class TelegramBotService {
    */
   async setupBot(): Promise<void> {
     const config = environment();
+    if (!this.botToken) {
+      this.logger.warn('Telegram bot token not configured');
+      return;
+    }
 
     if (config.mode === 'dev') {
       // Development: use polling
