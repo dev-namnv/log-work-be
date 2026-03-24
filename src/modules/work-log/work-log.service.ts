@@ -1,11 +1,14 @@
 import {
   BadRequestException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { randomBytes } from 'crypto';
 import {
+  addDays,
   differenceInMinutes,
   eachDayOfInterval,
   endOfMonth,
@@ -21,7 +24,9 @@ import {
   WorkSchedule,
 } from 'src/schemas/organization';
 import { WorkLog } from 'src/schemas/work-log';
+import { WorkLogShare } from 'src/schemas/work-log-share';
 import PaginationUtil, { PaginationResponse } from 'src/utils/pagination.util';
+import { CreateShareLinkDto } from './dto/createShareLink.dto';
 import { CreateWorkLogDto } from './dto/createWorkLog.dto';
 import { MonthlyReportDto } from './dto/monthlyReport.dto';
 import { SearchWorkLogDto } from './dto/searchWorkLog.dto';
@@ -34,6 +39,8 @@ export class WorkLogService {
     @InjectModel(WorkLog.name) private workLogModel: Model<WorkLog>,
     @InjectModel(Organization.name)
     private organizationModel: Model<Organization>,
+    @InjectModel(WorkLogShare.name)
+    private workLogShareModel: Model<WorkLogShare>,
   ) {}
 
   private getStandardWorkingDays(year: number, month: number): number {
@@ -66,8 +73,23 @@ export class WorkLogService {
     const checkIn = new Date(dto.checkIn);
     const checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
 
+    // Validate that checkIn is not in the future
+    if (checkIn > addDays(startOfDay(new Date()), 1)) {
+      throw new BadRequestException('Check-in cannot be in the future');
+    }
+    // Validate that checkIn and checkOut are on the same day (if checkOut is provided)
+    if (checkOut) {
+      const checkInDay = startOfDay(checkIn).getTime();
+      const checkOutDay = startOfDay(checkOut).getTime();
+      if (checkInDay !== checkOutDay) {
+        throw new BadRequestException(
+          'Check-in and check-out must be on the same day',
+        );
+      }
+    }
+    // If checkOut is provided, it must be after checkIn
     if (checkOut && checkOut <= checkIn) {
-      throw new BadRequestException('checkOut must be after checkIn');
+      throw new BadRequestException('Check-out must be after Check-in');
     }
 
     const dayStart = new Date(
@@ -361,5 +383,155 @@ export class WorkLogService {
       Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100 -
       params.breakMinutes / 60
     );
+  }
+
+  // ─────────────────────── Share Link ───────────────────────
+
+  async createShareLink(account: Account, dto: CreateShareLinkDto) {
+    const { month, year, organizationId, label, expiresAt } = dto;
+
+    if (organizationId) {
+      const org = await this.organizationModel.findById(organizationId);
+      if (!org) throw new NotFoundException('Organization not found');
+      const isMember =
+        org.members.some((m) => m.toString() === account._id.toString()) ||
+        org.owner.toString() === account._id.toString();
+      if (!isMember)
+        throw new ForbiddenException(
+          'You are not a member of this organization',
+        );
+    }
+
+    const token = randomBytes(24).toString('hex');
+    const share = await this.workLogShareModel.create({
+      token,
+      account: account._id,
+      organization: organizationId ? new Types.ObjectId(organizationId) : null,
+      month,
+      year,
+      label:
+        label ??
+        `Báo cáo tháng ${String(month).padStart(2, '0')}/${year} — ${account.firstName} ${account.lastName}`.trim(),
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      isActive: true,
+    });
+
+    return share;
+  }
+
+  async listShareLinks(account: Account) {
+    return this.workLogShareModel
+      .find({ account: account._id })
+      .populate('organization', '_id name')
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
+  async revokeShareLink(account: Account, id: string) {
+    const share = await this.workLogShareModel.findById(id);
+    if (!share) throw new NotFoundException('Share link not found');
+    if (share.account.toString() !== account._id.toString()) {
+      throw new ForbiddenException('Access denied');
+    }
+    await share.deleteOne();
+    return { message: 'Share link revoked' };
+  }
+
+  async viewSharedReport(token: string) {
+    const share = await this.workLogShareModel
+      .findOne({ token })
+      .populate('account', '_id firstName lastName email avatar')
+      .populate('organization', '_id name workSchedule')
+      .lean();
+
+    if (!share) throw new NotFoundException('Share link not found');
+    if (!share.isActive)
+      throw new GoneException('Share link is no longer active');
+    if (share.expiresAt && new Date() > share.expiresAt) {
+      throw new GoneException('Share link has expired');
+    }
+
+    const accountId = (share.account as any)._id;
+    const { month, year } = share;
+    const organizationId = share.organization
+      ? (share.organization as any)._id.toString()
+      : undefined;
+
+    const start = startOfMonth(new Date(year, month - 1));
+    const end = endOfMonth(start);
+
+    const filter: FilterQuery<WorkLog> = {
+      account: accountId,
+      date: { $gte: start, $lte: end },
+    };
+    if (organizationId) {
+      filter.organization = new Types.ObjectId(organizationId);
+    }
+
+    const logs = await this.workLogModel
+      .find(filter)
+      .populate('organization', '_id name workSchedule')
+      .sort({ date: 1 })
+      .lean();
+
+    const totalHours =
+      Math.round(logs.reduce((sum, l) => sum + l.hours, 0) * 100) / 100;
+    const standardWorkDays = this.getStandardWorkingDays(year, month);
+
+    let schedule = DEFAULT_WORK_SCHEDULE;
+    if (organizationId) {
+      const orgDoc = share.organization as any;
+      if (orgDoc?.workSchedule) schedule = orgDoc.workSchedule;
+    } else {
+      const org = await this.organizationModel
+        .findOne({
+          $or: [{ owner: accountId }, { members: accountId }],
+          isActive: true,
+        })
+        .lean();
+      if (org?.workSchedule) schedule = org.workSchedule;
+    }
+
+    const standardHoursPerDay = this.getStandardHoursPerDay(schedule);
+    const totalStandardHours =
+      Math.round(standardHoursPerDay * standardWorkDays * 100) / 100;
+    const overtimeHours = Math.max(
+      0,
+      Math.round((totalHours - totalStandardHours) * 100) / 100,
+    );
+    const missingHours = Math.max(
+      0,
+      Math.round((totalStandardHours - totalHours) * 100) / 100,
+    );
+    const attendanceRate =
+      totalStandardHours > 0
+        ? Math.round((totalHours / totalStandardHours) * 10000) / 100
+        : 0;
+
+    return {
+      share: {
+        _id: share._id,
+        token: share.token,
+        label: share.label,
+        month: share.month,
+        year: share.year,
+        expiresAt: share.expiresAt,
+        createdAt: share.createdAt,
+      },
+      account: share.account,
+      organization: share.organization ?? null,
+      month,
+      year,
+      workSchedule: schedule,
+      standardHoursPerDay,
+      standardWorkDays,
+      totalStandardHours,
+      totalHours,
+      loggedDays: logs.length,
+      overtimeHours,
+      missingHours,
+      attendanceRate,
+      logs,
+    };
   }
 }

@@ -13,6 +13,7 @@
 5. [Notice](#5-notice)
 6. [Organization](#6-organization)
 7. [Work Log](#7-work-log)
+   - 7.1 [Work Log Share](#71-work-log-share)
 8. [Telegram](#8-telegram)
 
 ---
@@ -1261,6 +1262,208 @@ Delete a work log entry.
 
 ---
 
+## 7.1 Work Log Share
+
+Cho phép người dùng tạo link chia sẻ báo cáo công việc theo tháng để gửi cho HR hoặc kế toán. Link không yêu cầu đăng nhập khi xem.
+
+---
+
+### `POST /work-log/share`
+
+Tạo một link chia sẻ báo cáo công việc theo tháng.
+
+> Requires: **login**
+
+**Request Body**
+
+```json
+{
+  "month": 3,
+  "year": 2026,
+  "organizationId": "665f...",
+  "label": "Báo cáo tháng 03/2026 — Nguyễn Văn A",
+  "expiresAt": "2026-04-30T23:59:59.000Z"
+}
+```
+
+| Field            | Type     | Required | Notes                                                                            |
+| ---------------- | -------- | -------- | -------------------------------------------------------------------------------- |
+| `month`          | `number` | ✅       | 1–12                                                                             |
+| `year`           | `number` | ✅       | e.g. `2026`                                                                      |
+| `organizationId` | `string` | ❌       | Giới hạn báo cáo trong một cơ quan cụ thể. Bỏ trống để hiển thị tất cả cơ quan. |
+| `label`          | `string` | ❌       | Nhãn hiển thị, tối đa 100 ký tự. Tự động tạo nếu bỏ trống.                       |
+| `expiresAt`      | `string` | ❌       | ISO 8601 — ngày hết hạn. Bỏ trống để link không bao giờ hết hạn.                |
+
+**Response** — `201 Created`
+
+```json
+{
+  "_id": "667c...",
+  "token": "a3f8b2e1c9d047...",
+  "account": "665f...",
+  "organization": "665f...",
+  "month": 3,
+  "year": 2026,
+  "label": "Báo cáo tháng 03/2026 — Nguyễn Văn A",
+  "expiresAt": "2026-04-30T23:59:59.000Z",
+  "isActive": true,
+  "createdAt": "2026-03-24T08:00:00.000Z",
+  "updatedAt": "2026-03-24T08:00:00.000Z"
+}
+```
+
+> URL chia sẻ được tạo bởi frontend theo dạng: `https://<frontend-host>/share/<token>`
+
+---
+
+### `GET /work-log/share`
+
+Lấy danh sách tất cả link chia sẻ của người dùng hiện tại.
+
+> Requires: **login**
+
+**Response** — `200 OK`
+
+```json
+[
+  {
+    "_id": "667c...",
+    "token": "a3f8b2e1c9d047...",
+    "account": "665f...",
+    "organization": { "_id": "665f...", "name": "Acme Corp" },
+    "month": 3,
+    "year": 2026,
+    "label": "Báo cáo tháng 03/2026 — Nguyễn Văn A",
+    "expiresAt": "2026-04-30T23:59:59.000Z",
+    "isActive": true,
+    "createdAt": "2026-03-24T08:00:00.000Z",
+    "updatedAt": "2026-03-24T08:00:00.000Z"
+  }
+]
+```
+
+---
+
+### `DELETE /work-log/share/:id/delete`
+
+Thu hồi (xoá) một link chia sẻ.
+
+> Requires: **login** (phải là chủ sở hữu của link)
+
+**URL Params**
+
+| Param | Type     | Notes                           |
+| ----- | -------- | ------------------------------- |
+| `id`  | `string` | MongoDB ObjectId của share link |
+
+**Response** — `200 OK`
+
+```json
+{ "message": "Share link revoked" }
+```
+
+---
+
+### `GET /work-log/share/:token/view`
+
+Xem báo cáo công việc qua link chia sẻ. **Không yêu cầu đăng nhập** — dùng để gửi cho HR hoặc kế toán.
+
+> No auth required.
+
+**URL Params**
+
+| Param   | Type     | Notes                                    |
+| ------- | -------- | ---------------------------------------- |
+| `token` | `string` | Token 48 ký tự hex từ share link         |
+
+**Response** — `200 OK`
+
+```json
+{
+  "share": {
+    "_id": "667c...",
+    "token": "a3f8b2e1c9d047...",
+    "label": "Báo cáo tháng 03/2026 — Nguyễn Văn A",
+    "month": 3,
+    "year": 2026,
+    "expiresAt": "2026-04-30T23:59:59.000Z",
+    "createdAt": "2026-03-24T08:00:00.000Z"
+  },
+  "account": {
+    "_id": "665f...",
+    "firstName": "Nguyễn Văn",
+    "lastName": "A",
+    "email": "nguyenvana@example.com",
+    "avatar": null
+  },
+  "organization": {
+    "_id": "665f...",
+    "name": "Acme Corp",
+    "workSchedule": {
+      "workStartTime": "08:00",
+      "workEndTime": "17:30",
+      "lunchBreakMinutes": 60
+    }
+  },
+  "month": 3,
+  "year": 2026,
+  "workSchedule": {
+    "workStartTime": "08:00",
+    "workEndTime": "17:30",
+    "lunchBreakMinutes": 60
+  },
+  "standardHoursPerDay": 8.5,
+  "standardWorkDays": 21,
+  "totalStandardHours": 178.5,
+  "totalHours": 165.0,
+  "loggedDays": 20,
+  "overtimeHours": 0,
+  "missingHours": 13.5,
+  "attendanceRate": 92.44,
+  "logs": [
+    {
+      "_id": "666a...",
+      "account": "665f...",
+      "organization": "665f...",
+      "date": "2026-03-03T00:00:00.000Z",
+      "checkIn": "2026-03-03T08:00:00.000Z",
+      "checkOut": "2026-03-03T17:30:00.000Z",
+      "hours": 8.5,
+      "note": null,
+      "createdAt": "2026-03-03T17:35:00.000Z",
+      "updatedAt": "2026-03-03T17:35:00.000Z"
+    }
+  ]
+}
+```
+
+**Response fields explained**
+
+| Field                 | Type        | Description                                                                    |
+| --------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `share`               | `object`    | Metadata của share link (không chứa thông tin nhạy cảm)                        |
+| `account`             | `object`    | Thông tin người lao động (firstName, lastName, email, avatar)                  |
+| `organization`        | `object\|null` | Cơ quan được lọc, `null` nếu link hiển thị tất cả cơ quan                   |
+| `workSchedule`        | `object`    | Lịch làm việc áp dụng để tính toán số giờ chuẩn                                |
+| `standardHoursPerDay` | `number`    | Giờ làm chuẩn mỗi ngày                                                          |
+| `standardWorkDays`    | `number`    | Số ngày làm việc chuẩn trong tháng (Thứ 2–Thứ 6)                               |
+| `totalStandardHours`  | `number`    | Tổng giờ làm chuẩn = `standardHoursPerDay × standardWorkDays`                  |
+| `totalHours`          | `number`    | Tổng số giờ đã làm thực tế                                                      |
+| `loggedDays`          | `number`    | Số ngày đã có log                                                               |
+| `overtimeHours`       | `number`    | Giờ OT = `max(0, totalHours − totalStandardHours)`                              |
+| `missingHours`        | `number`    | Giờ thiếu = `max(0, totalStandardHours − totalHours)`                           |
+| `attendanceRate`      | `number`    | Tỷ lệ chuyên cần (%) = `(totalHours / totalStandardHours) × 100` (2 chữ số)    |
+| `logs`                | `WorkLog[]` | Chi tiết từng ngày làm việc                                                     |
+
+**Errors**
+
+| Status | Reason                                  |
+| ------ | --------------------------------------- |
+| `404`  | Token không tồn tại                     |
+| `410`  | Link đã bị thu hồi hoặc đã hết hạn      |
+
+---
+
 ## 8. Telegram
 
 Endpoints for Telegram bot integration. The webhook endpoint is called by Telegram servers.
@@ -1383,6 +1586,26 @@ Get the currently configured webhook information.
   "updatedAt": "2026-03-23T17:35:00.000Z"
 }
 ```
+
+### WorkLogShare Object
+
+```json
+{
+  "_id": "667c...",
+  "token": "a3f8b2e1c9d047ab12fe3901cd5678ef90ab1234cd5678ef",
+  "account": "665f...",
+  "organization": { "_id": "665f...", "name": "Acme Corp" },
+  "month": 3,
+  "year": 2026,
+  "label": "Báo cáo tháng 03/2026 — Nguyễn Văn A",
+  "expiresAt": "2026-04-30T23:59:59.000Z",
+  "isActive": true,
+  "createdAt": "2026-03-24T08:00:00.000Z",
+  "updatedAt": "2026-03-24T08:00:00.000Z"
+}
+```
+
+---
 
 ### Notice Object
 
