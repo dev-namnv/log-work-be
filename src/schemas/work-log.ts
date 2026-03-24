@@ -31,6 +31,13 @@ export class WorkLog extends Document {
   @Prop({ default: null })
   note: string;
 
+  /**
+   * When true, lunch break minutes are NOT deducted when computing hours.
+   * Useful for days where the employee worked through lunch.
+   */
+  @Prop({ default: false })
+  skipLunchBreak: boolean;
+
   @Prop()
   createdAt: Date;
 

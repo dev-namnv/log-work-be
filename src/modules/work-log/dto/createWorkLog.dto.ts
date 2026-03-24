@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsDateString,
   IsMongoId,
   IsNotEmpty,
@@ -33,4 +34,14 @@ export class CreateWorkLogDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiProperty({
+    required: false,
+    default: false,
+    description:
+      'Khi true, không trừ giờ nghỉ trưa đã cấu hình khi tính tổng giờ làm',
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipLunchBreak?: boolean;
 }

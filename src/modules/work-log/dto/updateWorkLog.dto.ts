@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsOptional, IsString } from 'class-validator';
 
 export class UpdateWorkLogDto {
   @ApiProperty({
@@ -24,4 +24,13 @@ export class UpdateWorkLogDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Khi true, không trừ giờ nghỉ trưa đã cấu hình khi tính tổng giờ làm',
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipLunchBreak?: boolean;
 }

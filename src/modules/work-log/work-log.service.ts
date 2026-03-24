@@ -118,6 +118,7 @@ export class WorkLogService {
       checkIn,
       checkOut,
       breakMinutes: org.workSchedule.lunchBreakMinutes,
+      skipLunchBreak: dto.skipLunchBreak ?? false,
     });
 
     return this.workLogModel.create({
@@ -128,6 +129,7 @@ export class WorkLogService {
       checkOut,
       hours,
       note: dto.note ?? null,
+      skipLunchBreak: dto.skipLunchBreak ?? false,
     });
   }
 
@@ -198,13 +200,24 @@ export class WorkLogService {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
+    const skipLunchBreak =
+      dto.skipLunchBreak !== undefined
+        ? dto.skipLunchBreak
+        : log.skipLunchBreak;
+
     const hours = this.getWorkedHoursByDay({
       checkIn,
       checkOut,
       breakMinutes: organization.workSchedule.lunchBreakMinutes,
+      skipLunchBreak,
     });
 
-    const updatePayload: Partial<WorkLog> = { hours, checkIn, checkOut };
+    const updatePayload: Partial<WorkLog> = {
+      hours,
+      checkIn,
+      checkOut,
+      skipLunchBreak,
+    };
     if (dto.note !== undefined) updatePayload.note = dto.note;
 
     await this.workLogModel.findByIdAndUpdate(id, updatePayload, { new: true });
@@ -376,13 +389,15 @@ export class WorkLogService {
     checkIn: Date;
     checkOut: Date | null;
     breakMinutes: number;
+    skipLunchBreak?: boolean;
   }): number {
-    const { checkIn, checkOut } = params;
+    const { checkIn, checkOut, skipLunchBreak } = params;
     if (!checkOut) return 0;
-    return (
-      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100 -
-      params.breakMinutes / 60
-    );
+    const rawHours =
+      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100;
+    return skipLunchBreak
+      ? rawHours
+      : Math.round((rawHours - params.breakMinutes / 60) * 100) / 100;
   }
 
   // ─────────────────────── Share Link ───────────────────────
