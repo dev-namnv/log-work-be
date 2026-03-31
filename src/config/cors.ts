@@ -1,6 +1,6 @@
 const whitelist = [
   // Web
-  'https://logwork.web.app',
+  'https://log-works.web.app',
 ];
 
 export function getCORSWhiteList(mode: string) {
