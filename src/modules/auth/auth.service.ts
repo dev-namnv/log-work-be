@@ -22,6 +22,7 @@ import { Notice, NoticeType, NoticeVariant } from 'src/schemas/notice';
 import { v4 as uuidv4 } from 'uuid';
 import { MailService } from '../mail/mail.service';
 import { NoticeService } from '../notice/notice.service';
+import { LoginResponse } from './auth.controller';
 import { ChangePasswordDto } from './dto/changePassword.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -40,10 +41,10 @@ export class AuthService {
 
   private isProduction = environment().mode === 'production';
 
-  async register(
-    { inviteCode, ...registerDto }: RegisterDto,
-    res: Response,
-  ): Promise<void> {
+  async register({
+    inviteCode,
+    ...registerDto
+  }: RegisterDto): Promise<LoginResponse> {
     const checkExist = await this.accountModel.findOne({
       email: registerDto.email.toLowerCase().trim(),
     });
@@ -81,21 +82,17 @@ export class AuthService {
 
     const token = this.jwtService.sign(payload, { expiresIn: '7d' });
 
-    this.setAuthCookie(res, token);
-
     const info = await this.accountModel
       .findById(account._id)
       .select(ACCOUNT_FIELD_SELECTS);
 
-    res.json({
-      statusCode: 200,
-      content: {
-        account: info,
-      },
-    });
+    return {
+      accessToken: token,
+      account: info,
+    };
   }
 
-  async login(loginDto: LoginDto, ip: string, res: Response): Promise<void> {
+  async login(loginDto: LoginDto, ip: string): Promise<LoginResponse> {
     const account = await this.accountModel.findOne({
       email: loginDto.email.toLowerCase().trim(),
       isActivated: true,
@@ -113,61 +110,6 @@ export class AuthService {
       throw new BadRequestException('Email or Password is invalid');
     }
 
-    // Check if admin and IP is new
-    if (account.role === AccountRole.ADMIN && !account.ips.includes(ip)) {
-      // Generate 6-digit OTP
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-      // Save OTP to account metadata
-      await this.accountModel.findByIdAndUpdate(account._id, {
-        $set: {
-          'metadata.otpCode': otpCode,
-          'metadata.otpExpiry': otpExpiry,
-          'metadata.otpVerified': false,
-          'metadata.pendingLoginIp': ip,
-        },
-      });
-
-      // Send OTP via email
-      await this.mailService.sendMailNormal({
-        to: account.email,
-        subject: 'OTP Login Verification - Admin Account',
-        text: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-              <h2 style="color: #333;">🔐 Admin Login Verification</h2>
-              <p>We detected a login attempt from a new IP address:</p>
-              <p style="background-color: #f0f0f0; padding: 10px; border-left: 4px solid #4CAF50; margin: 15px 0;">
-                <strong>IP Address:</strong> ${ip}
-              </p>
-              <p>Your verification code is:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4CAF50; background-color: #f0f0f0; padding: 15px 30px; border-radius: 8px; display: inline-block;">
-                  ${otpCode}
-                </span>
-              </div>
-              <p style="color: #666; font-size: 14px;">This code will expire in <strong>10 minutes</strong>.</p>
-              <p style="color: #999; font-size: 12px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-                If you didn't attempt to log in, please secure your account immediately.
-              </p>
-            </div>
-          </div>
-        `,
-      });
-
-      res.status(200).json({
-        statusCode: 200,
-        content: {
-          requireOtp: true,
-          message:
-            'OTP has been sent to your email. Please verify to continue.',
-          email: account.email,
-        },
-      });
-      return;
-    }
-
     const payload = { accountId: account._id.toString() };
     void this.onLogAccount(account, ip);
 
@@ -178,18 +120,14 @@ export class AuthService {
 
     const token = this.jwtService.sign(payload, { expiresIn: '7d' });
 
-    this.setAuthCookie(res, token);
-
     const info = await this.accountModel
       .findById(account._id)
       .select(ACCOUNT_FIELD_SELECTS);
 
-    res.json({
-      statusCode: 200,
-      content: {
-        account: info,
-      },
-    });
+    return {
+      accessToken: token,
+      account: info,
+    };
   }
 
   async onLogAccount(account: Account, ip: string) {

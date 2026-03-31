@@ -18,11 +18,7 @@ export interface JwtPayload {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(@InjectModel(Account.name) private accountModel: Model<Account>) {
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        (req) => {
-          return req?.cookies?.accessToken;
-        },
-      ]),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: environment().jwt.secret,
     });

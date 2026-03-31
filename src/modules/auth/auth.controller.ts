@@ -10,7 +10,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { getRealClientIp } from 'src/common/ip.helper';
@@ -30,7 +30,8 @@ import { UpdateProfileDto } from './dto/UpdateProfile.dto';
 import { VerifyAccountDto } from './dto/verifyAccount.dto';
 import { ResendOtpDto, VerifyOtpDto } from './dto/verifyOtp.dto';
 
-export class LoginResponse {
+export interface LoginResponse {
+  accessToken: string;
   account: Account;
 }
 
@@ -41,21 +42,15 @@ export class AuthController {
   @Post('/register')
   @ApiTags('Auth')
   @ApiOperation({ summary: 'Account register' })
-  @ApiResponse({ type: LoginResponse, status: 201 })
-  async create(@Body() registerDto: RegisterDto, @Res() res: Response) {
-    return this.authService.register(registerDto, res);
+  async create(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
   }
 
   @Post('/login')
   @ApiTags('Auth')
   @ApiOperation({ summary: 'Account login' })
-  @ApiResponse({ type: LoginResponse })
-  async login(
-    @Body() loginDto: LoginDto,
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
-    return this.authService.login(loginDto, getRealClientIp(req), res);
+  async login(@Body() loginDto: LoginDto, @Req() req: Request) {
+    return this.authService.login(loginDto, getRealClientIp(req));
   }
 
   @ApiTags('Auth')
