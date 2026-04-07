@@ -144,6 +144,11 @@ export class WorkLogService {
     if (dto.date) {
       filterQuery.date = startOfDay(new Date(dto.date));
     }
+    if (dto.month && dto.year) {
+      const start = startOfMonth(new Date(dto.year, dto.month - 1));
+      const end = endOfMonth(start);
+      filterQuery.date = { $gte: start, $lte: end };
+    }
 
     const { keyword, page, limit, match, skip, sort } =
       PaginationUtil.getQueryByPagination(dto, filterQuery);
