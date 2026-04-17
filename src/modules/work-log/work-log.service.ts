@@ -199,9 +199,9 @@ export class WorkLogService {
     if (!organization) throw new NotFoundException('Organization not found');
 
     const checkIn = dto.checkIn ? new Date(dto.checkIn) : log.checkIn;
-    const checkOut = dto.checkOut ? new Date(dto.checkOut) : log.checkOut;
+    const checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
 
-    if (checkOut <= checkIn) {
+    if (checkOut && checkOut <= checkIn) {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
