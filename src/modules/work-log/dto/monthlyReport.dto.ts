@@ -17,7 +17,7 @@ export class MonthlyReportDto {
   year: number;
 
   @ApiProperty({ required: false, description: 'Filter by organization ID' })
-  @IsOptional()
   @IsMongoId()
+  @IsOptional()
   organizationId?: string;
 }
