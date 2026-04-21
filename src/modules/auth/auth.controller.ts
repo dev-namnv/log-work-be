@@ -11,6 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { getRealClientIp } from 'src/common/ip.helper';
@@ -181,6 +182,7 @@ export class AuthController {
 
   @ApiTags('Auth - QR Login')
   @ApiOperation({ summary: 'Poll QR session status' })
+  @SkipThrottle()
   @Get('/qr/status/:sessionId')
   async getQrStatus(@Param('sessionId') sessionId: string) {
     return this.authService.getQrStatus(sessionId);

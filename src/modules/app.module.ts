@@ -18,6 +18,7 @@ import { AccountModule } from './account/account.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ClockModule } from './clock/clock.module';
 import { OrganizationModule } from './organization/organization.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { WorkLogModule } from './work-log/work-log.module';
@@ -43,6 +44,7 @@ import { WorkLogModule } from './work-log/work-log.module';
     TelegramModule,
     OrganizationModule,
     WorkLogModule,
+    ClockModule,
   ],
   controllers: [AppController],
   providers: [

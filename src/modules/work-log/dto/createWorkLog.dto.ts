@@ -28,7 +28,7 @@ export class CreateWorkLogDto {
   })
   @IsDateString()
   @IsOptional()
-  checkOut: string;
+  checkOut?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
