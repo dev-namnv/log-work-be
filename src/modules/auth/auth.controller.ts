@@ -175,14 +175,17 @@ export class AuthController {
 
   @ApiTags('Auth - QR Login')
   @ApiOperation({ summary: 'Generate QR login session' })
+  @SkipCache()
   @Post('/qr/generate')
   async generateQrSession() {
+    console.log('Generating QR session');
     return this.authService.generateQrSession();
   }
 
   @ApiTags('Auth - QR Login')
   @ApiOperation({ summary: 'Poll QR session status' })
   @SkipThrottle()
+  @SkipCache()
   @Get('/qr/status/:sessionId')
   async getQrStatus(@Param('sessionId') sessionId: string) {
     return this.authService.getQrStatus(sessionId);
