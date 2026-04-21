@@ -19,6 +19,7 @@ import { AccountMetadata, AccountRole } from 'src/interfaces/Account';
 import { MongoId } from 'src/interfaces/MongoId';
 import { Account, ACCOUNT_FIELD_SELECTS } from 'src/schemas/account';
 import { Notice, NoticeType, NoticeVariant } from 'src/schemas/notice';
+import { QrSession, QrSessionStatus } from 'src/schemas/qr-session';
 import { v4 as uuidv4 } from 'uuid';
 import { MailService } from '../mail/mail.service';
 import { NoticeService } from '../notice/notice.service';
@@ -34,6 +35,7 @@ export class AuthService {
   constructor(
     @InjectModel(Account.name) private accountModel: Model<Account>,
     @InjectModel(Notice.name) private noticeModel: Model<Notice>,
+    @InjectModel(QrSession.name) private qrSessionModel: Model<QrSession>,
     private jwtService: JwtService,
     private noticeService: NoticeService,
     private mailService: MailService,
@@ -369,6 +371,69 @@ export class AuthService {
 
     return 'Your account has been deleted';
   }
+
+  // ─── QR Login ────────────────────────────────────────────────────────────
+
+  async generateQrSession(): Promise<{
+    sessionId: string;
+    qrUrl: string;
+    expiresAt: Date;
+  }> {
+    const sessionId = uuidv4();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    await this.qrSessionModel.create({ sessionId, expiresAt });
+
+    const qrUrl = `${environment().webHost}/qr-login?session=${sessionId}`;
+    return { sessionId, qrUrl, expiresAt };
+  }
+
+  async getQrStatus(sessionId: string): Promise<{
+    status: QrSessionStatus | 'expired';
+    token?: string;
+  }> {
+    const session = await this.qrSessionModel.findOne({ sessionId });
+
+    if (!session || new Date() > session.expiresAt) {
+      return { status: 'expired' };
+    }
+
+    if (session.status === QrSessionStatus.CONFIRMED) {
+      return { status: QrSessionStatus.CONFIRMED, token: session.token };
+    }
+
+    return { status: session.status };
+  }
+
+  async confirmQrSession(
+    sessionId: string,
+    account: Account,
+  ): Promise<{ message: string }> {
+    const session = await this.qrSessionModel.findOne({ sessionId });
+
+    if (!session || new Date() > session.expiresAt) {
+      throw new BadRequestException('QR session has expired or does not exist');
+    }
+
+    if (session.status !== QrSessionStatus.PENDING) {
+      throw new BadRequestException('QR session is no longer valid');
+    }
+
+    const payload = { accountId: account._id.toString() };
+    const token = this.jwtService.sign(payload, { expiresIn: '7d' });
+
+    await this.qrSessionModel.findByIdAndUpdate(session._id, {
+      $set: {
+        status: QrSessionStatus.CONFIRMED,
+        account: account._id,
+        token,
+      },
+    });
+
+    return { message: 'QR login confirmed successfully' };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   setAuthCookie(res: Response, token: string): void {
     const isProd = this.isProduction;

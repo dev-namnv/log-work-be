@@ -6,6 +6,7 @@ import environment from 'src/config/environment';
 import { JwtStrategy } from 'src/guards/strategies/jwt.strategy';
 import { Account, AccountSchema } from 'src/schemas/account';
 import { Notice, NoticeSchema } from 'src/schemas/notice';
+import { QrSession, QrSessionSchema } from 'src/schemas/qr-session';
 import { MailModule } from '../mail/mail.module';
 import { NoticeModule } from '../notice/notice.module';
 import { AuthController } from './auth.controller';
@@ -18,6 +19,7 @@ import { AuthService } from './auth.service';
     MongooseModule.forFeature([
       { name: Account.name, schema: AccountSchema },
       { name: Notice.name, schema: NoticeSchema },
+      { name: QrSession.name, schema: QrSessionSchema },
     ]),
     PassportModule,
     JwtModule.registerAsync({

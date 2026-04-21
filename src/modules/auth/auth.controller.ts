@@ -23,6 +23,7 @@ import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/changePassword.dto';
 import { ForgotPasswordDto } from './dto/forgotPassword.dto';
 import { LoginDto } from './dto/login.dto';
+import { ConfirmQrLoginDto } from './dto/qrLogin.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { UpdateMetadataDto } from './dto/UpdateMetadata.dto';
@@ -169,5 +170,31 @@ export class AuthController {
   @Post('logout')
   async logout(@Res() res: Response) {
     return this.authService.logout(res);
+  }
+
+  @ApiTags('Auth - QR Login')
+  @ApiOperation({ summary: 'Generate QR login session' })
+  @Post('/qr/generate')
+  async generateQrSession() {
+    return this.authService.generateQrSession();
+  }
+
+  @ApiTags('Auth - QR Login')
+  @ApiOperation({ summary: 'Poll QR session status' })
+  @Get('/qr/status/:sessionId')
+  async getQrStatus(@Param('sessionId') sessionId: string) {
+    return this.authService.getQrStatus(sessionId);
+  }
+
+  @ApiTags('Auth - QR Login')
+  @ApiOperation({ summary: 'Confirm QR login (requires mobile auth)' })
+  @Auth()
+  @SkipCache()
+  @Post('/qr/confirm')
+  async confirmQrLogin(
+    @CurrentAccount() account: Account,
+    @Body() dto: ConfirmQrLoginDto,
+  ) {
+    return this.authService.confirmQrSession(dto.sessionId, account);
   }
 }
