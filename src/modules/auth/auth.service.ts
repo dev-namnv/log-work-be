@@ -391,6 +391,7 @@ export class AuthService {
   async getQrStatus(sessionId: string): Promise<{
     status: QrSessionStatus | 'expired';
     token?: string;
+    expiresAt?: Date;
   }> {
     const session = await this.qrSessionModel.findOne({ sessionId });
 
@@ -399,10 +400,14 @@ export class AuthService {
     }
 
     if (session.status === QrSessionStatus.CONFIRMED) {
-      return { status: QrSessionStatus.CONFIRMED, token: session.token };
+      return {
+        status: QrSessionStatus.CONFIRMED,
+        token: session.token,
+        expiresAt: session.expiresAt,
+      };
     }
 
-    return { status: session.status };
+    return { status: session.status, expiresAt: session.expiresAt };
   }
 
   async confirmQrSession(
