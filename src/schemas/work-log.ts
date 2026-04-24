@@ -50,3 +50,4 @@ export const WorkLogSchema = SchemaFactory.createForClass(WorkLog);
 WorkLogSchema.index({ account: 1, date: -1 });
 WorkLogSchema.index({ organization: 1, date: -1 });
 WorkLogSchema.index({ account: 1, organization: 1, date: 1 }, { unique: true });
+WorkLogSchema.index({ note: 'text' });
