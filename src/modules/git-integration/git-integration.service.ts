@@ -9,16 +9,23 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import axios from 'axios';
+import * as crypto from 'crypto';
 import {
   createCipheriv,
   createDecipheriv,
   createHmac,
+  createSecretKey,
+  KeyObject,
   randomBytes,
   timingSafeEqual,
 } from 'crypto';
 import { startOfDay } from 'date-fns';
 import { Model, Types } from 'mongoose';
 import environment from 'src/config/environment';
+import {
+  GitHubPushPayload,
+  GitLabPushPayload,
+} from 'src/interfaces/GitIntergration';
 import { Account } from 'src/schemas/account';
 import { GitIntegration, GitProvider } from 'src/schemas/git-integration';
 import { WorkLog } from 'src/schemas/work-log';
@@ -50,23 +57,20 @@ export class GitIntegrationService {
 
   // ─── Encryption helpers ───────────────────────────────────────────────────
 
-  private getEncryptionKey(): Buffer {
+  private getEncryptionKey(): KeyObject {
     const { secret } = environment().jwt;
-    // Derive a 32-byte key from the JWT secret via SHA-256
-    const hash = require('crypto').createHash('sha256').update(secret).digest();
-    return hash;
+    const hash = crypto.createHash('sha256').update(secret).digest();
+    return createSecretKey(new Uint8Array(hash));
   }
 
   private encrypt(plaintext: string): string {
     const key = this.getEncryptionKey();
     const iv = randomBytes(12);
-    const cipher = createCipheriv(ALGORITHM, key, iv);
-    const encrypted = Buffer.concat([
-      cipher.update(plaintext, 'utf8'),
-      cipher.final(),
-    ]);
+    const cipher = createCipheriv(ALGORITHM, key, new Uint8Array(iv));
+    let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
     const tag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+    return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted}`;
   }
 
   private decrypt(ciphertext: string): string {
@@ -75,13 +79,12 @@ export class GitIntegrationService {
     const decipher = createDecipheriv(
       ALGORITHM,
       key,
-      Buffer.from(ivHex, 'hex'),
+      new Uint8Array(Buffer.from(ivHex, 'hex')),
     );
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return (
-      decipher.update(Buffer.from(dataHex, 'hex'), undefined, 'utf8') +
-      decipher.final('utf8')
-    );
+    decipher.setAuthTag(new Uint8Array(Buffer.from(tagHex, 'hex')));
+    let decrypted = decipher.update(dataHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   }
 
   // ─── OAuth state helpers ──────────────────────────────────────────────────
@@ -112,7 +115,7 @@ export class GitIntegrationService {
     const env = environment();
     const callbackBase = `${env.host}:${env.port}`;
 
-    if (provider === GitProvider.GITHUB) {
+    if (provider === GitProvider.GitHub) {
       const params = new URLSearchParams({
         client_id: env.github.clientId,
         redirect_uri: `${callbackBase}/git-integration/github/callback`,
@@ -122,7 +125,7 @@ export class GitIntegrationService {
       return `https://github.com/login/oauth/authorize?${params}`;
     }
 
-    if (provider === GitProvider.GITLAB) {
+    if (provider === GitProvider.GitLab) {
       const params = new URLSearchParams({
         client_id: env.gitlab.appId,
         redirect_uri: `${callbackBase}/git-integration/gitlab/callback`,
@@ -178,7 +181,7 @@ export class GitIntegrationService {
 
     await this.upsertIntegration({
       accountId,
-      provider: GitProvider.GITHUB,
+      provider: GitProvider.GitHub,
       providerUserId: String(id),
       username: login,
       displayName: name ?? login,
@@ -227,7 +230,7 @@ export class GitIntegrationService {
 
     await this.upsertIntegration({
       accountId,
-      provider: GitProvider.GITLAB,
+      provider: GitProvider.GitLab,
       providerUserId: String(id),
       username,
       displayName: name ?? username,
@@ -294,7 +297,10 @@ export class GitIntegrationService {
       .lean();
 
     // Strip encrypted tokens from the response, expose only safe fields
-    return integrations.map(({ accessToken, refreshToken, ...safe }) => safe);
+    return integrations.map(
+      ({ accessToken: _accessToken, refreshToken: _refreshToken, ...safe }) =>
+        safe,
+    );
   }
 
   async deleteIntegration(account: Account, id: string): Promise<void> {
@@ -319,7 +325,7 @@ export class GitIntegrationService {
 
     // Verify HMAC-SHA256 signature: "sha256=<hex>"
     const expected = `sha256=${createHmac('sha256', integration.webhookSecret)
-      .update(rawBody)
+      .update(rawBody as unknown as Uint8Array)
       .digest('hex')}`;
 
     let sigBuf: Buffer;
@@ -331,7 +337,13 @@ export class GitIntegrationService {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 
-    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+    if (
+      sigBuf.length !== expBuf.length ||
+      !timingSafeEqual(
+        sigBuf as unknown as Uint8Array,
+        expBuf as unknown as Uint8Array,
+      )
+    ) {
       throw new UnauthorizedException('Webhook signature mismatch');
     }
 
@@ -362,7 +374,10 @@ export class GitIntegrationService {
     const tokenBuf = Buffer.from(token ?? '');
     if (
       secretBuf.length !== tokenBuf.length ||
-      !timingSafeEqual(secretBuf, tokenBuf)
+      !timingSafeEqual(
+        secretBuf as unknown as Uint8Array,
+        tokenBuf as unknown as Uint8Array,
+      )
     ) {
       throw new UnauthorizedException('Webhook token mismatch');
     }
@@ -392,8 +407,7 @@ export class GitIntegrationService {
   ): Promise<void> {
     if (!commits.length) return;
 
-    const providerLabel =
-      integration.provider === GitProvider.GITHUB ? 'GitHub' : 'GitLab';
+    const providerLabel = integration.provider;
 
     for (const commit of commits) {
       const commitDate = new Date(commit.timestamp);
@@ -425,35 +439,4 @@ export class GitIntegrationService {
       this.logger.log(`Appended commit ${commit.id} to WorkLog ${workLog._id}`);
     }
   }
-}
-
-// ─── Provider payload types ────────────────────────────────────────────────
-
-interface GitHubCommit {
-  id: string;
-  message: string;
-  timestamp: string;
-  url: string;
-  author?: { name?: string; email?: string };
-}
-
-export interface GitHubPushPayload {
-  ref?: string;
-  repository?: { full_name?: string };
-  commits?: GitHubCommit[];
-}
-
-interface GitLabCommit {
-  id: string;
-  message: string;
-  timestamp: string;
-  url: string;
-  author?: { name?: string; email?: string };
-}
-
-export interface GitLabPushPayload {
-  ref?: string;
-  project?: { path_with_namespace?: string };
-  repository?: { name?: string };
-  commits?: GitLabCommit[];
 }

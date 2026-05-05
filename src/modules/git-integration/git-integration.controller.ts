@@ -17,13 +17,13 @@ import { Auth } from 'src/decorators/auth.decorator';
 import { CurrentAccount } from 'src/decorators/currentAccount.decorator';
 import { SkipCache } from 'src/decorators/skip-cache.decorator';
 import { MongoIdDto } from 'src/dto/mongoId.dto';
-import { Account } from 'src/interfaces/Account';
-import { GitProvider } from 'src/schemas/git-integration';
 import {
   GitHubPushPayload,
-  GitIntegrationService,
   GitLabPushPayload,
-} from './git-integration.service';
+} from 'src/interfaces/GitIntergration';
+import { Account } from 'src/schemas/account';
+import { GitProvider } from 'src/schemas/git-integration';
+import { GitIntegrationService } from './git-integration.service';
 
 @SkipCache()
 @ApiTags('GitIntegration')
@@ -52,7 +52,7 @@ export class GitIntegrationController {
       account._id.toString(),
     );
     const url = this.gitIntegrationService.getOAuthUrl(
-      GitProvider.GITHUB,
+      GitProvider.GitHub,
       state,
     );
     return { url };
@@ -66,7 +66,7 @@ export class GitIntegrationController {
       account._id.toString(),
     );
     const url = this.gitIntegrationService.getOAuthUrl(
-      GitProvider.GITLAB,
+      GitProvider.GitLab,
       state,
     );
     return { url };
