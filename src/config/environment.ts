@@ -28,4 +28,12 @@ export default () => ({
     webhookUrl: process.env.TELEGRAM_WEBHOOK_URL || '',
   },
   supportEmail: process.env.SUPPORT_EMAIL || '',
+  github: {
+    clientId: process.env.GITHUB_CLIENT_ID || '',
+    clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+  },
+  gitlab: {
+    appId: process.env.GITLAB_APP_ID || '',
+    appSecret: process.env.GITLAB_APP_SECRET || '',
+  },
 });

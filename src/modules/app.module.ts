@@ -19,6 +19,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ClockModule } from './clock/clock.module';
+import { GitIntegrationModule } from './git-integration/git-integration.module';
 import { OrganizationModule } from './organization/organization.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { WorkLogModule } from './work-log/work-log.module';
@@ -45,6 +46,7 @@ import { WorkLogModule } from './work-log/work-log.module';
     OrganizationModule,
     WorkLogModule,
     ClockModule,
+    GitIntegrationModule,
   ],
   controllers: [AppController],
   providers: [
