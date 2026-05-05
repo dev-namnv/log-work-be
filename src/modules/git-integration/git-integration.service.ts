@@ -550,6 +550,11 @@ export class GitIntegrationService {
 
     const providerLabel = integration.provider;
 
+    // Resolve preferred org once per batch (same for all commits in this poll)
+    const lastOrgId = await this.userRefService.getLastWorkLogOrganization(
+      integration.account,
+    );
+
     for (const commit of commits) {
       const commitDate = new Date(commit.timestamp);
       if (isNaN(commitDate.getTime())) continue;
@@ -557,19 +562,24 @@ export class GitIntegrationService {
       const dayStart = startOfDay(commitDate);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-      const workLog = await this.workLogModel.findOne({
-        account: integration.account,
-        date: { $gte: dayStart, $lt: dayEnd },
-      });
+      // Prefer WorkLog from the user's last-used org; fallback to any WorkLog on that day
+      const workLog =
+        (lastOrgId
+          ? await this.workLogModel.findOne({
+              account: integration.account,
+              organization: lastOrgId,
+              date: { $gte: dayStart, $lt: dayEnd },
+            })
+          : null) ??
+        (await this.workLogModel.findOne({
+          account: integration.account,
+          date: { $gte: dayStart, $lt: dayEnd },
+        }));
 
       const line = `[${providerLabel}] ${commit.message} (${commit.id})`;
 
       if (!workLog) {
         // No WorkLog for this day — resolve org via UserRef (last used), fallback to first active org
-        const lastOrgId = await this.userRefService.getLastWorkLogOrganization(
-          integration.account,
-        );
-
         const org = lastOrgId
           ? await this.organizationModel.findOne({
               _id: lastOrgId,
