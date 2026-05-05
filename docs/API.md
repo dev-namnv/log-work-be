@@ -14,7 +14,8 @@
 6. [Organization](#6-organization)
 7. [Work Log](#7-work-log)
    - 7.1 [Work Log Share](#71-work-log-share)
-8. [Telegram](#8-telegram)
+8. [Git Integration](#8-git-integration)
+9. [Telegram](#9-telegram)
 
 ---
 
@@ -1286,12 +1287,12 @@ Tạo một link chia sẻ báo cáo công việc theo tháng.
 }
 ```
 
-| Field            | Type     | Required | Notes                                                                            |
-| ---------------- | -------- | -------- | -------------------------------------------------------------------------------- |
-| `month`          | `number` | ✅       | 1–12                                                                             |
-| `year`           | `number` | ✅       | e.g. `2026`                                                                      |
+| Field            | Type     | Required | Notes                                                                           |
+| ---------------- | -------- | -------- | ------------------------------------------------------------------------------- |
+| `month`          | `number` | ✅       | 1–12                                                                            |
+| `year`           | `number` | ✅       | e.g. `2026`                                                                     |
 | `organizationId` | `string` | ❌       | Giới hạn báo cáo trong một cơ quan cụ thể. Bỏ trống để hiển thị tất cả cơ quan. |
-| `label`          | `string` | ❌       | Nhãn hiển thị, tối đa 100 ký tự. Tự động tạo nếu bỏ trống.                       |
+| `label`          | `string` | ❌       | Nhãn hiển thị, tối đa 100 ký tự. Tự động tạo nếu bỏ trống.                      |
 | `expiresAt`      | `string` | ❌       | ISO 8601 — ngày hết hạn. Bỏ trống để link không bao giờ hết hạn.                |
 
 **Response** — `201 Created`
@@ -1372,9 +1373,9 @@ Xem báo cáo công việc qua link chia sẻ. **Không yêu cầu đăng nhập
 
 **URL Params**
 
-| Param   | Type     | Notes                                    |
-| ------- | -------- | ---------------------------------------- |
-| `token` | `string` | Token 48 ký tự hex từ share link         |
+| Param   | Type     | Notes                            |
+| ------- | -------- | -------------------------------- |
+| `token` | `string` | Token 48 ký tự hex từ share link |
 
 **Response** — `200 OK`
 
@@ -1439,32 +1440,240 @@ Xem báo cáo công việc qua link chia sẻ. **Không yêu cầu đăng nhập
 
 **Response fields explained**
 
-| Field                 | Type        | Description                                                                    |
-| --------------------- | ----------- | ------------------------------------------------------------------------------ |
-| `share`               | `object`    | Metadata của share link (không chứa thông tin nhạy cảm)                        |
-| `account`             | `object`    | Thông tin người lao động (firstName, lastName, email, avatar)                  |
+| Field                 | Type           | Description                                                                 |
+| --------------------- | -------------- | --------------------------------------------------------------------------- |
+| `share`               | `object`       | Metadata của share link (không chứa thông tin nhạy cảm)                     |
+| `account`             | `object`       | Thông tin người lao động (firstName, lastName, email, avatar)               |
 | `organization`        | `object\|null` | Cơ quan được lọc, `null` nếu link hiển thị tất cả cơ quan                   |
-| `workSchedule`        | `object`    | Lịch làm việc áp dụng để tính toán số giờ chuẩn                                |
-| `standardHoursPerDay` | `number`    | Giờ làm chuẩn mỗi ngày                                                          |
-| `standardWorkDays`    | `number`    | Số ngày làm việc chuẩn trong tháng (Thứ 2–Thứ 6)                               |
-| `totalStandardHours`  | `number`    | Tổng giờ làm chuẩn = `standardHoursPerDay × standardWorkDays`                  |
-| `totalHours`          | `number`    | Tổng số giờ đã làm thực tế                                                      |
-| `loggedDays`          | `number`    | Số ngày đã có log                                                               |
-| `overtimeHours`       | `number`    | Giờ OT = `max(0, totalHours − totalStandardHours)`                              |
-| `missingHours`        | `number`    | Giờ thiếu = `max(0, totalStandardHours − totalHours)`                           |
-| `attendanceRate`      | `number`    | Tỷ lệ chuyên cần (%) = `(totalHours / totalStandardHours) × 100` (2 chữ số)    |
-| `logs`                | `WorkLog[]` | Chi tiết từng ngày làm việc                                                     |
+| `workSchedule`        | `object`       | Lịch làm việc áp dụng để tính toán số giờ chuẩn                             |
+| `standardHoursPerDay` | `number`       | Giờ làm chuẩn mỗi ngày                                                      |
+| `standardWorkDays`    | `number`       | Số ngày làm việc chuẩn trong tháng (Thứ 2–Thứ 6)                            |
+| `totalStandardHours`  | `number`       | Tổng giờ làm chuẩn = `standardHoursPerDay × standardWorkDays`               |
+| `totalHours`          | `number`       | Tổng số giờ đã làm thực tế                                                  |
+| `loggedDays`          | `number`       | Số ngày đã có log                                                           |
+| `overtimeHours`       | `number`       | Giờ OT = `max(0, totalHours − totalStandardHours)`                          |
+| `missingHours`        | `number`       | Giờ thiếu = `max(0, totalStandardHours − totalHours)`                       |
+| `attendanceRate`      | `number`       | Tỷ lệ chuyên cần (%) = `(totalHours / totalStandardHours) × 100` (2 chữ số) |
+| `logs`                | `WorkLog[]`    | Chi tiết từng ngày làm việc                                                 |
 
 **Errors**
 
-| Status | Reason                                  |
-| ------ | --------------------------------------- |
-| `404`  | Token không tồn tại                     |
-| `410`  | Link đã bị thu hồi hoặc đã hết hạn      |
+| Status | Reason                             |
+| ------ | ---------------------------------- |
+| `404`  | Token không tồn tại                |
+| `410`  | Link đã bị thu hồi hoặc đã hết hạn |
 
 ---
 
-## 8. Telegram
+## 8. Git Integration
+
+Liên kết nhiều tài khoản GitHub / GitLab với tài khoản Log Work. Khi có commit được push lên repo, nội dung commit sẽ tự động được append vào trường `note` của WorkLog tương ứng theo ngày.
+
+**Luồng kết nối:**
+
+1. Frontend gọi `GET /git-integration/github/oauth-url` (hoặc `gitlab`) để lấy URL OAuth.
+2. Redirect người dùng đến URL đó — sau khi cấp quyền, GitHub/GitLab gọi callback về server.
+3. Server lưu tích hợp và redirect về frontend (`/settings/integrations?linked=github`).
+4. Frontend gọi `GET /git-integration` để lấy danh sách, hiển thị `webhookSecret` và hướng dẫn người dùng cấu hình webhook trong repo của họ.
+
+---
+
+### `GET /git-integration`
+
+Lấy danh sách tất cả tài khoản Git đã liên kết.
+
+> Requires: **login**
+
+**Response** — `200 OK`
+
+```json
+[
+  {
+    "_id": "668a...",
+    "account": "665f...",
+    "provider": "GitHub",
+    "providerUserId": "12345678",
+    "username": "johndoe",
+    "displayName": "John Doe",
+    "webhookSecret": "a1b2c3d4e5f6...",
+    "isActive": true,
+    "createdAt": "2026-05-01T00:00:00.000Z",
+    "updatedAt": "2026-05-01T00:00:00.000Z"
+  }
+]
+```
+
+> `accessToken` và `refreshToken` **không bao giờ** được trả về trong response.
+
+---
+
+### `GET /git-integration/github/oauth-url`
+
+Lấy URL để bắt đầu luồng OAuth với GitHub.
+
+> Requires: **login**
+
+**Response** — `200 OK`
+
+```json
+{
+  "url": "https://github.com/login/oauth/authorize?client_id=...&redirect_uri=...&scope=read%3Auser%2Cuser%3Aemail&state=..."
+}
+```
+
+---
+
+### `GET /git-integration/gitlab/oauth-url`
+
+Lấy URL để bắt đầu luồng OAuth với GitLab.
+
+> Requires: **login**
+
+**Response** — `200 OK`
+
+```json
+{
+  "url": "https://gitlab.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&scope=read_user&state=..."
+}
+```
+
+---
+
+### `GET /git-integration/github/callback`
+
+OAuth callback từ GitHub (server tự xử lý, **không gọi trực tiếp từ frontend**).
+
+> No auth required. Được GitHub gọi tự động.
+
+**Query Params**
+
+| Param   | Type     | Notes                               |
+| ------- | -------- | ----------------------------------- |
+| `code`  | `string` | Authorization code từ GitHub        |
+| `state` | `string` | State token để xác minh luồng OAuth |
+
+**Response** — `302 Redirect` đến `<WEB_HOST>/settings/integrations?linked=github`
+
+---
+
+### `GET /git-integration/gitlab/callback`
+
+OAuth callback từ GitLab (server tự xử lý, **không gọi trực tiếp từ frontend**).
+
+> No auth required. Được GitLab gọi tự động.
+
+**Query Params**
+
+| Param   | Type     | Notes                               |
+| ------- | -------- | ----------------------------------- |
+| `code`  | `string` | Authorization code từ GitLab        |
+| `state` | `string` | State token để xác minh luồng OAuth |
+
+**Response** — `302 Redirect` đến `<WEB_HOST>/settings/integrations?linked=gitlab`
+
+---
+
+### `DELETE /git-integration/:id/delete`
+
+Hủy liên kết một tài khoản Git.
+
+> Requires: **login** (phải là chủ sở hữu của integration)
+
+**URL Params**
+
+| Param | Type     | Notes                               |
+| ----- | -------- | ----------------------------------- |
+| `id`  | `string` | MongoDB ObjectId của GitIntegration |
+
+**Response** — `200 OK`
+
+```json
+{ "message": "Integration removed" }
+```
+
+---
+
+### `POST /git-integration/webhook/github/:id`
+
+Nhận push webhook từ GitHub. Mỗi commit trong payload sẽ được append vào `note` của WorkLog khớp theo ngày commit.
+
+> No auth required. Được GitHub gọi tự động.
+
+**Cấu hình webhook trong GitHub repo:**
+
+| Field        | Value                                                                  |
+| ------------ | ---------------------------------------------------------------------- |
+| Payload URL  | `https://<your-domain>/git-integration/webhook/github/<integrationId>` |
+| Content type | `application/json`                                                     |
+| Secret       | `webhookSecret` lấy từ `GET /git-integration`                          |
+| Events       | Just the **push** event                                                |
+
+**Headers**
+
+| Header                | Notes                                                          |
+| --------------------- | -------------------------------------------------------------- |
+| `X-Hub-Signature-256` | `sha256=<hmac-hex>` — bắt buộc, server verify bằng HMAC-SHA256 |
+
+**Response** — `200 OK`
+
+```json
+{ "ok": true }
+```
+
+**Errors**
+
+| Status | Reason                                      |
+| ------ | ------------------------------------------- |
+| `401`  | Thiếu header signature hoặc HMAC không khớp |
+
+---
+
+### `POST /git-integration/webhook/gitlab/:id`
+
+Nhận push webhook từ GitLab. Mỗi commit trong payload sẽ được append vào `note` của WorkLog khớp theo ngày commit.
+
+> No auth required. Được GitLab gọi tự động.
+
+**Cấu hình webhook trong GitLab repo:**
+
+| Field        | Value                                                                  |
+| ------------ | ---------------------------------------------------------------------- |
+| URL          | `https://<your-domain>/git-integration/webhook/gitlab/<integrationId>` |
+| Secret token | `webhookSecret` lấy từ `GET /git-integration`                          |
+| Trigger      | **Push events**                                                        |
+
+**Headers**
+
+| Header           | Notes                                                    |
+| ---------------- | -------------------------------------------------------- |
+| `X-Gitlab-Token` | Phải khớp với `webhookSecret` — so sánh bằng timing-safe |
+
+**Response** — `200 OK`
+
+```json
+{ "ok": true }
+```
+
+**Errors**
+
+| Status | Reason                                   |
+| ------ | ---------------------------------------- |
+| `401`  | Thiếu header token hoặc token không khớp |
+
+---
+
+**Format note được append:**
+
+```
+[GitHub] feat: add login endpoint (a1b2c3d) — org/repo
+[GitLab] fix: correct date calculation (b2c3d4e) — group/project
+```
+
+Mỗi commit chỉ được append **một lần** (kiểm tra theo short commit hash). Nếu WorkLog chưa tồn tại cho ngày đó, commit sẽ bị bỏ qua.
+
+---
+
+## 9. Telegram
 
 Endpoints for Telegram bot integration. The webhook endpoint is called by Telegram servers.
 
