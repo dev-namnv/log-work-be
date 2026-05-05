@@ -1470,12 +1470,23 @@ Xem báo cáo công việc qua link chia sẻ. **Không yêu cầu đăng nhập
 
 Liên kết nhiều tài khoản GitHub / GitLab với tài khoản Log Work. Khi có commit được push lên repo, nội dung commit sẽ tự động được append vào trường `note` của WorkLog tương ứng theo ngày.
 
+**Hai phương thức đồng bộ commit:**
+
+|                 | Polling (mặc định) | Webhook (tùy chọn)          |
+| --------------- | ------------------ | --------------------------- |
+| Cần quyền repo  | Không              | Admin của repo              |
+| Độ trễ          | ~15 phút           | Realtime                    |
+| Setup phía user | Không cần          | Cấu hình webhook trong repo |
+
+Polling chạy tự động mỗi 15 phút bằng access token OAuth đã lưu — không yêu cầu quyền gì trong repo. Webhook cho độ trễ thấp hơn khi có quyền cấu hình.
+
 **Luồng kết nối:**
 
 1. Frontend gọi `GET /git-integration/github/oauth-url` (hoặc `gitlab`) để lấy URL OAuth.
 2. Redirect người dùng đến URL đó — sau khi cấp quyền, GitHub/GitLab gọi callback về server.
-3. Server lưu tích hợp và redirect về frontend (`/settings/integrations?linked=github`).
-4. Frontend gọi `GET /git-integration` để lấy danh sách, hiển thị `webhookSecret` và hướng dẫn người dùng cấu hình webhook trong repo của họ.
+3. Server lưu tích hợp, redirect về frontend (`/settings/integrations?linked=github`).
+4. Polling bắt đầu tự động từ lần cron tiếp theo (mỗi 15 phút).
+5. _(Tùy chọn)_ Frontend gọi `GET /git-integration` để lấy `webhookSecret` nếu muốn cấu hình webhook trong repo.
 
 ---
 
@@ -1670,7 +1681,7 @@ Nhận push webhook từ GitLab. Mỗi commit trong payload sẽ được append
 [GitLab] fix: correct date calculation (b2c3d4e) — group/project
 ```
 
-Mỗi commit chỉ được append **một lần** (kiểm tra theo short commit hash). Nếu WorkLog chưa tồn tại cho ngày đó, commit sẽ bị bỏ qua.
+Mỗi commit chỉ được append **một lần** (kiểm tra theo short commit hash). Nếu WorkLog chưa tồn tại cho ngày đó, server tự tạo WorkLog mới với `hours=0` sử dụng tổ chức gần nhất từ `UserRef`.
 
 ---
 

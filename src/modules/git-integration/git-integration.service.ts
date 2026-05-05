@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
+import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import {
@@ -317,6 +318,141 @@ export class GitIntegrationService {
     await integration.deleteOne();
   }
 
+  // ─── Polling (cron) ──────────────────────────────────────────────────────
+
+  /**
+   * Runs every 15 minutes.
+   * Polls GitHub/GitLab APIs for new commits from all active integrations.
+   * Works for repos where the user cannot configure webhooks.
+   */
+  @Cron('*/15 * * * *')
+  async pollAllIntegrations(): Promise<void> {
+    const integrations = await this.gitIntegrationModel.find({
+      isActive: true,
+    });
+    if (!integrations.length) return;
+    this.logger.debug(
+      `Polling ${integrations.length} active git integration(s)`,
+    );
+
+    for (const integration of integrations) {
+      try {
+        if (integration.provider === GitProvider.GitHub) {
+          await this.pollGitHubIntegration(integration);
+        } else if (integration.provider === GitProvider.GitLab) {
+          await this.pollGitLabIntegration(integration);
+        }
+      } catch (err) {
+        this.logger.error(
+          `Poll failed [${integration.provider}] integration=${integration._id}: ${
+            (err as Error)?.message
+          }`,
+        );
+      }
+    }
+  }
+
+  private async pollGitHubIntegration(
+    integration: GitIntegration,
+  ): Promise<void> {
+    const accessToken = this.decrypt(integration.accessToken);
+    const since =
+      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    interface GHEvent {
+      type: string;
+      repo: { name: string };
+      payload: {
+        commits?: Array<{
+          sha: string;
+          message: string;
+          author?: { name?: string; email?: string };
+        }>;
+      };
+      created_at: string;
+    }
+
+    const { data: events } = await axios.get<GHEvent[]>(
+      `https://api.github.com/users/${integration.username}/events?per_page=100`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    const newEvents = events.filter(
+      (e) => e.type === 'PushEvent' && new Date(e.created_at) > since,
+    );
+
+    const commits: CommitInfo[] = [];
+    for (const event of newEvents) {
+      for (const c of event.payload.commits ?? []) {
+        commits.push({
+          id: c.sha.slice(0, 7),
+          message: c.message.split('\n')[0].trim(),
+          timestamp: event.created_at,
+          url: '',
+          repoName: event.repo.name,
+          authorEmail: c.author?.email ?? '',
+          authorName: c.author?.name ?? '',
+        });
+      }
+    }
+
+    await this.appendCommitsToWorkLogs(integration, commits);
+    await this.gitIntegrationModel.updateOne(
+      { _id: integration._id },
+      { $set: { lastPolledAt: new Date() } },
+    );
+    this.logger.debug(
+      `[GitHub] polled ${commits.length} new commit(s) for ${integration.username}`,
+    );
+  }
+
+  private async pollGitLabIntegration(
+    integration: GitIntegration,
+  ): Promise<void> {
+    const accessToken = this.decrypt(integration.accessToken);
+    const since =
+      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    interface GLEvent {
+      action_name: string;
+      created_at: string;
+      project_id?: number;
+      push_data?: {
+        commit_count?: number;
+        commit_title?: string;
+        commit_to?: string;
+      };
+    }
+
+    // GitLab `after` param accepts YYYY-MM-DD
+    const sinceDate = since.toISOString().slice(0, 10);
+    const { data: events } = await axios.get<GLEvent[]>(
+      `https://gitlab.com/api/v4/events?action=pushed&after=${sinceDate}&per_page=100`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    const commits: CommitInfo[] = events
+      .filter((e) => !!e.push_data?.commit_to && new Date(e.created_at) > since)
+      .map((e) => ({
+        id: (e.push_data!.commit_to as string).slice(0, 7),
+        message: (e.push_data?.commit_title ?? 'commit').split('\n')[0].trim(),
+        timestamp: e.created_at,
+        url: '',
+        repoName: String(e.project_id ?? 'unknown'),
+        authorEmail: '',
+        authorName: integration.username,
+      }));
+
+    await this.appendCommitsToWorkLogs(integration, commits);
+    await this.gitIntegrationModel.updateOne(
+      { _id: integration._id },
+      { $set: { lastPolledAt: new Date() } },
+    );
+    this.logger.debug(
+      `[GitLab] polled ${commits.length} new commit(s) for ${integration.username}`,
+    );
+  }
+
   // ─── Webhook handlers ─────────────────────────────────────────────────────
 
   async handleGitHubWebhook(
@@ -426,7 +562,7 @@ export class GitIntegrationService {
         date: { $gte: dayStart, $lt: dayEnd },
       });
 
-      const line = `[${providerLabel}] ${commit.message} (${commit.id}) — ${commit.repoName}`;
+      const line = `[${providerLabel}] ${commit.message} (${commit.id})`;
 
       if (!workLog) {
         // No WorkLog for this day — resolve org via UserRef (last used), fallback to first active org

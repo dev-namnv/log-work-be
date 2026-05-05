@@ -50,6 +50,10 @@ export class GitIntegration extends Document {
   @Prop({ default: true })
   isActive: boolean;
 
+  /** Timestamp of last successful poll — null means never polled */
+  @Prop({ default: null })
+  lastPolledAt: Date | null;
+
   @Prop()
   createdAt: Date;
 
