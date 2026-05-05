@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Organization, OrganizationSchema } from 'src/schemas/organization';
 import { WorkLog, WorkLogSchema } from 'src/schemas/work-log';
 import { WorkLogShare, WorkLogShareSchema } from 'src/schemas/work-log-share';
+import { UserRefModule } from '../user-ref/user-ref.module';
 import { WorkLogShareController } from './work-log-share.controller';
 import { WorkLogController } from './work-log.controller';
 import { WorkLogService } from './work-log.service';
@@ -14,6 +15,7 @@ import { WorkLogService } from './work-log.service';
       { name: Organization.name, schema: OrganizationSchema },
       { name: WorkLogShare.name, schema: WorkLogShareSchema },
     ]),
+    UserRefModule,
   ],
   controllers: [WorkLogController, WorkLogShareController],
   providers: [WorkLogService],

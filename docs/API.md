@@ -15,7 +15,8 @@
 7. [Work Log](#7-work-log)
    - 7.1 [Work Log Share](#71-work-log-share)
 8. [Git Integration](#8-git-integration)
-9. [Telegram](#9-telegram)
+9. [User Ref](#9-user-ref)
+10. [Telegram](#10-telegram)
 
 ---
 
@@ -1673,7 +1674,57 @@ Mỗi commit chỉ được append **một lần** (kiểm tra theo short commit
 
 ---
 
-## 9. Telegram
+## 9. User Ref
+
+Lưu trữ dữ liệu tham chiếu nhẹ theo từng user, dùng để pre-fill form tạo nhanh (ví dụ: tổ chức gần nhất đã tạo WorkLog). Document được upsert tự động khi user thực hiện các thao tác liên quan.
+
+---
+
+### `GET /user-ref`
+
+Lấy dữ liệu tham chiếu của user hiện tại.
+
+> Requires: **login**
+
+**Response** — `200 OK`
+
+```json
+{
+  "_id": "668b...",
+  "account": "665f...",
+  "lastWorkLogOrganization": {
+    "_id": "665f...",
+    "name": "Acme Corp",
+    "workSchedule": {
+      "workStartTime": "08:00",
+      "workEndTime": "17:30",
+      "lunchBreakMinutes": 60
+    }
+  },
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "updatedAt": "2026-05-05T08:00:00.000Z"
+}
+```
+
+> Trả về `null` nếu user chưa có dữ liệu tham chiếu nào (chưa tạo WorkLog lần nào).
+
+**Response fields**
+
+| Field                     | Type                   | Description                                                                        |
+| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `lastWorkLogOrganization` | `Organization \| null` | Tổ chức gần nhất dùng khi tạo WorkLog — populate sẵn `_id`, `name`, `workSchedule` |
+
+**Cách dùng gợi ý (frontend)**
+
+```
+1. Gọi GET /user-ref khi mở form tạo WorkLog nhanh
+2. Nếu lastWorkLogOrganization != null → pre-fill ô Organization
+3. Sau khi tạo WorkLog thành công → UserRef tự cập nhật phía server
+```
+
+---
+
+## 10. Telegram
 
 Endpoints for Telegram bot integration. The webhook endpoint is called by Telegram servers.
 

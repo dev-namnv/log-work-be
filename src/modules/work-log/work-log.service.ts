@@ -26,6 +26,7 @@ import {
 import { WorkLog } from 'src/schemas/work-log';
 import { WorkLogShare } from 'src/schemas/work-log-share';
 import PaginationUtil, { PaginationResponse } from 'src/utils/pagination.util';
+import { UserRefService } from '../user-ref/user-ref.service';
 import { CreateShareLinkDto } from './dto/createShareLink.dto';
 import { CreateWorkLogDto } from './dto/createWorkLog.dto';
 import { MonthlyReportDto } from './dto/monthlyReport.dto';
@@ -41,6 +42,7 @@ export class WorkLogService {
     private organizationModel: Model<Organization>,
     @InjectModel(WorkLogShare.name)
     private workLogShareModel: Model<WorkLogShare>,
+    private userRefService: UserRefService,
   ) {}
 
   private getStandardWorkingDays(year: number, month: number): number {
@@ -121,16 +123,24 @@ export class WorkLogService {
       skipLunchBreak: dto.skipLunchBreak ?? false,
     });
 
-    return this.workLogModel.create({
-      account: account._id,
-      organization: new Types.ObjectId(dto.organizationId),
-      date: dayStart,
-      checkIn,
-      checkOut,
-      hours,
-      note: dto.note ?? null,
-      skipLunchBreak: dto.skipLunchBreak ?? false,
-    });
+    return this.workLogModel
+      .create({
+        account: account._id,
+        organization: new Types.ObjectId(dto.organizationId),
+        date: dayStart,
+        checkIn,
+        checkOut,
+        hours,
+        note: dto.note ?? null,
+        skipLunchBreak: dto.skipLunchBreak ?? false,
+      })
+      .then((log) => {
+        void this.userRefService.setLastWorkLogOrganization(
+          account._id,
+          dto.organizationId,
+        );
+        return log;
+      });
   }
 
   async search(

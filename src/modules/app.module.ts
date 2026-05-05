@@ -22,6 +22,7 @@ import { ClockModule } from './clock/clock.module';
 import { GitIntegrationModule } from './git-integration/git-integration.module';
 import { OrganizationModule } from './organization/organization.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { UserRefModule } from './user-ref/user-ref.module';
 import { WorkLogModule } from './work-log/work-log.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { WorkLogModule } from './work-log/work-log.module';
     WorkLogModule,
     ClockModule,
     GitIntegrationModule,
+    UserRefModule,
   ],
   controllers: [AppController],
   providers: [

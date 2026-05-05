@@ -28,7 +28,9 @@ import {
 } from 'src/interfaces/GitIntergration';
 import { Account } from 'src/schemas/account';
 import { GitIntegration, GitProvider } from 'src/schemas/git-integration';
+import { Organization } from 'src/schemas/organization';
 import { WorkLog } from 'src/schemas/work-log';
+import { UserRefService } from '../user-ref/user-ref.service';
 
 /** Shape of a single commit extracted from a webhook payload */
 interface CommitInfo {
@@ -52,7 +54,10 @@ export class GitIntegrationService {
     private gitIntegrationModel: Model<GitIntegration>,
     @InjectModel(WorkLog.name)
     private workLogModel: Model<WorkLog>,
+    @InjectModel(Organization.name)
+    private organizationModel: Model<Organization>,
     private jwtService: JwtService,
+    private userRefService: UserRefService,
   ) {}
 
   // ─── Encryption helpers ───────────────────────────────────────────────────
@@ -421,18 +426,53 @@ export class GitIntegrationService {
         date: { $gte: dayStart, $lt: dayEnd },
       });
 
+      const line = `[${providerLabel}] ${commit.message} (${commit.id}) — ${commit.repoName}`;
+
       if (!workLog) {
-        this.logger.debug(
-          `No WorkLog for account ${integration.account} on ${dayStart.toISOString().slice(0, 10)} — skipping commit ${commit.id}`,
+        // No WorkLog for this day — resolve org via UserRef (last used), fallback to first active org
+        const lastOrgId = await this.userRefService.getLastWorkLogOrganization(
+          integration.account,
+        );
+
+        const org = lastOrgId
+          ? await this.organizationModel.findOne({
+              _id: lastOrgId,
+              members: integration.account,
+              isActive: true,
+            })
+          : await this.organizationModel.findOne({
+              members: integration.account,
+              isActive: true,
+            });
+
+        if (!org) {
+          this.logger.debug(
+            `No org found for account ${integration.account} — skipping commit ${commit.id}`,
+          );
+          continue;
+        }
+
+        await this.workLogModel.create({
+          account: integration.account,
+          organization: org._id,
+          date: dayStart,
+          checkIn: dayStart,
+          checkOut: null,
+          hours: 0,
+          note: line,
+          skipLunchBreak: false,
+        });
+
+        this.logger.log(
+          `Auto-created WorkLog for account ${integration.account} on ${dayStart.toISOString().slice(0, 10)} with commit ${commit.id}`,
         );
         continue;
       }
 
-      const line = `[${providerLabel}] ${commit.message} (${commit.id}) — ${commit.repoName}`;
-      const currentNote = workLog.note ?? '';
-      // Avoid duplicates: check if this exact commit line is already present
-      if (currentNote.includes(commit.id)) continue;
+      // Avoid duplicates: check if this exact commit hash is already present
+      if ((workLog.note ?? '').includes(commit.id)) continue;
 
+      const currentNote = workLog.note ?? '';
       workLog.note = currentNote ? `${currentNote}\n${line}` : line;
       await workLog.save();
 
