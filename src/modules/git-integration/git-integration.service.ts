@@ -113,7 +113,7 @@ export class GitIntegrationService {
 
   getOAuthUrl(provider: GitProvider, state: string): string {
     const env = environment();
-    const callbackBase = `${env.host}:${env.port}`;
+    const callbackBase = env.host;
 
     if (provider === GitProvider.GitHub) {
       const params = new URLSearchParams({
