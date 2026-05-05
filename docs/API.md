@@ -1724,6 +1724,46 @@ Lấy dữ liệu tham chiếu của user hiện tại.
 
 ---
 
+### `PATCH /user-ref`
+
+Cập nhật dữ liệu tham chiếu của user hiện tại. Tất cả các field đều optional — chỉ các field được truyền mới được cập nhật.
+
+> Requires: **login**
+
+**Request Body** — tất cả field optional
+
+```json
+{
+  "lastWorkLogOrganization": "665f1a2b3c4d5e6f7a8b9c0d"
+}
+```
+
+| Field                     | Type             | Required | Notes                                               |
+| ------------------------- | ---------------- | -------- | --------------------------------------------------- |
+| `lastWorkLogOrganization` | `string \| null` | ❌       | MongoDB ObjectId của tổ chức; `null` để xoá giá trị |
+
+**Response** — `200 OK` — UserRef document đã populate (giống response của `GET /user-ref`)
+
+```json
+{
+  "_id": "668b...",
+  "account": "665f...",
+  "lastWorkLogOrganization": {
+    "_id": "665f...",
+    "name": "Acme Corp",
+    "workSchedule": {
+      "workStartTime": "08:00",
+      "workEndTime": "17:30",
+      "lunchBreakMinutes": 60
+    }
+  },
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "updatedAt": "2026-05-05T08:00:00.000Z"
+}
+```
+
+---
+
 ## 10. Telegram
 
 Endpoints for Telegram bot integration. The webhook endpoint is called by Telegram servers.
