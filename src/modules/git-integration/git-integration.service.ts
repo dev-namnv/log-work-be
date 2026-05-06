@@ -373,7 +373,7 @@ export class GitIntegrationService {
     }
 
     const { data: events } = await axios.get<GHEvent[]>(
-      `https://api.github.com/user/events?per_page=100`,
+      `https://api.github.com/users/${integration.username}/events?per_page=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
 
