@@ -1529,7 +1529,7 @@ Lấy URL để bắt đầu luồng OAuth với GitHub.
 
 ```json
 {
-  "url": "https://github.com/login/oauth/authorize?client_id=...&redirect_uri=...&scope=read%3Auser%2Cuser%3Aemail&state=..."
+  "url": "https://github.com/login/oauth/authorize?client_id=...&redirect_uri=...&scope=read%3Auser%2Cuser%3Aemail%2Crepo&state=..."
 }
 ```
 

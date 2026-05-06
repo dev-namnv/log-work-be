@@ -125,7 +125,7 @@ export class GitIntegrationService {
       const params = new URLSearchParams({
         client_id: env.github.clientId,
         redirect_uri: `${callbackBase}/git-integration/github/callback`,
-        scope: 'read:user,user:email',
+        scope: 'read:user,user:email,repo',
         state,
       });
       return `https://github.com/login/oauth/authorize?${params}`;
@@ -373,7 +373,7 @@ export class GitIntegrationService {
     }
 
     const { data: events } = await axios.get<GHEvent[]>(
-      `https://api.github.com/users/${integration.username}/events?per_page=100`,
+      `https://api.github.com/user/events?per_page=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
 
