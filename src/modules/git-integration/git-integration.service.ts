@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import {
@@ -24,7 +24,11 @@ import { startOfDay } from 'date-fns';
 import { Model, Types } from 'mongoose';
 import environment from 'src/config/environment';
 import {
+  CommitInfo,
   GitHubPushPayload,
+  GitHubRepo,
+  GitHubRepoCommit,
+  GitLabEvent,
   GitLabPushPayload,
 } from 'src/interfaces/GitIntergration';
 import { Account } from 'src/schemas/account';
@@ -32,17 +36,6 @@ import { GitIntegration, GitProvider } from 'src/schemas/git-integration';
 import { Organization } from 'src/schemas/organization';
 import { WorkLog } from 'src/schemas/work-log';
 import { UserRefService } from '../user-ref/user-ref.service';
-
-/** Shape of a single commit extracted from a webhook payload */
-interface CommitInfo {
-  id: string;
-  message: string;
-  timestamp: string;
-  url: string;
-  repoName: string;
-  authorEmail: string;
-  authorName: string;
-}
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -321,11 +314,11 @@ export class GitIntegrationService {
   // ─── Polling (cron) ──────────────────────────────────────────────────────
 
   /**
-   * Runs every 15 minutes.
+   * Runs every 10 minutes.
    * Polls GitHub/GitLab APIs for new commits from all active integrations.
    * Works for repos where the user cannot configure webhooks.
    */
-  @Cron('*/15 * * * *')
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async pollAllIntegrations(): Promise<void> {
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
@@ -359,42 +352,11 @@ export class GitIntegrationService {
     const since =
       integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    interface GHEvent {
-      type: string;
-      repo: { name: string };
-      payload: {
-        commits?: Array<{
-          sha: string;
-          message: string;
-          author?: { name?: string; email?: string };
-        }>;
-      };
-      created_at: string;
-    }
-
-    const { data: events } = await axios.get<GHEvent[]>(
-      `https://api.github.com/users/${integration.username}/events?per_page=100`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+    const commits = await this.fetchGitHubCommits(
+      integration.username,
+      accessToken,
+      since,
     );
-
-    const newEvents = events.filter(
-      (e) => e.type === 'PushEvent' && new Date(e.created_at) > since,
-    );
-
-    const commits: CommitInfo[] = [];
-    for (const event of newEvents) {
-      for (const c of event.payload.commits ?? []) {
-        commits.push({
-          id: c.sha.slice(0, 7),
-          message: c.message.split('\n')[0].trim(),
-          timestamp: event.created_at,
-          url: '',
-          repoName: event.repo.name,
-          authorEmail: c.author?.email ?? '',
-          authorName: c.author?.name ?? '',
-        });
-      }
-    }
 
     await this.appendCommitsToWorkLogs(integration, commits);
     await this.gitIntegrationModel.updateOne(
@@ -402,8 +364,59 @@ export class GitIntegrationService {
       { $set: { lastPolledAt: new Date() } },
     );
     this.logger.debug(
-      `[GitHub] polled ${commits.length} new commit(s) for ${integration.username}`,
+      `[GitHub] polled ${commits.length} new commit(s) for ${integration.username} since ${since.toISOString()}`,
     );
+  }
+
+  private async fetchGitHubCommits(
+    username: string,
+    accessToken: string,
+    since: Date,
+  ): Promise<CommitInfo[]> {
+    const authHeaders = { Authorization: `Bearer ${accessToken}` };
+    const sinceIso = since.toISOString();
+
+    // Step 1: list repos the user owns or collaborates on, sorted by last push
+    const { data: repos } = await axios.get<GitHubRepo[]>(
+      'https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100',
+      { headers: authHeaders },
+    );
+
+    // Only query repos that had activity after `since`
+    const activeRepos = repos.filter(
+      (r) => r.pushed_at && new Date(r.pushed_at) > since,
+    );
+
+    const commits: CommitInfo[] = [];
+
+    for (const repo of activeRepos) {
+      try {
+        const { data } = await axios.get<GitHubRepoCommit[]>(
+          `https://api.github.com/repos/${repo.full_name}/commits?author=${username}&since=${sinceIso}&per_page=100`,
+          { headers: authHeaders },
+        );
+        for (const c of data) {
+          commits.push({
+            id: c.sha.slice(0, 7),
+            message: c.commit.message.split('\n')[0].trim(),
+            timestamp:
+              c.commit.author?.date ?? c.commit.committer?.date ?? sinceIso,
+            url: c.html_url ?? '',
+            repoName: repo.full_name,
+            authorEmail: c.commit.author?.email ?? '',
+            authorName: c.commit.author?.name ?? '',
+          });
+        }
+      } catch (err) {
+        this.logger.warn(
+          `[GitHub] fetch commits failed for ${repo.full_name}: ${
+            (err as Error)?.message
+          }`,
+        );
+      }
+    }
+
+    return this.cleanCommitsForWorkLog(commits);
   }
 
   private async pollGitLabIntegration(
@@ -413,20 +426,29 @@ export class GitIntegrationService {
     const since =
       integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    interface GLEvent {
-      action_name: string;
-      created_at: string;
-      project_id?: number;
-      push_data?: {
-        commit_count?: number;
-        commit_title?: string;
-        commit_to?: string;
-      };
-    }
+    const commits = await this.fetchGitLabCommits(
+      integration.username,
+      accessToken,
+      since,
+    );
 
-    // GitLab `after` param accepts YYYY-MM-DD
+    await this.appendCommitsToWorkLogs(integration, commits);
+    await this.gitIntegrationModel.updateOne(
+      { _id: integration._id },
+      { $set: { lastPolledAt: new Date() } },
+    );
+    this.logger.debug(
+      `[GitLab] polled ${commits.length} new commit(s) for ${integration.username}`,
+    );
+  }
+
+  private async fetchGitLabCommits(
+    username: string,
+    accessToken: string,
+    since: Date,
+  ): Promise<CommitInfo[]> {
     const sinceDate = since.toISOString().slice(0, 10);
-    const { data: events } = await axios.get<GLEvent[]>(
+    const { data: events } = await axios.get<GitLabEvent[]>(
       `https://gitlab.com/api/v4/events?action=pushed&after=${sinceDate}&per_page=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
@@ -440,17 +462,10 @@ export class GitIntegrationService {
         url: '',
         repoName: String(e.project_id ?? 'unknown'),
         authorEmail: '',
-        authorName: integration.username,
+        authorName: username,
       }));
 
-    await this.appendCommitsToWorkLogs(integration, commits);
-    await this.gitIntegrationModel.updateOne(
-      { _id: integration._id },
-      { $set: { lastPolledAt: new Date() } },
-    );
-    this.logger.debug(
-      `[GitLab] polled ${commits.length} new commit(s) for ${integration.username}`,
-    );
+    return this.cleanCommitsForWorkLog(commits);
   }
 
   // ─── Webhook handlers ─────────────────────────────────────────────────────
@@ -546,7 +561,8 @@ export class GitIntegrationService {
     integration: GitIntegration,
     commits: CommitInfo[],
   ): Promise<void> {
-    if (!commits.length) return;
+    const cleaned = this.cleanCommitsForWorkLog(commits);
+    if (!cleaned.length) return;
 
     const providerLabel = integration.provider;
 
@@ -555,7 +571,7 @@ export class GitIntegrationService {
       integration.account,
     );
 
-    for (const commit of commits) {
+    for (const commit of cleaned) {
       const commitDate = new Date(commit.timestamp);
       if (isNaN(commitDate.getTime())) continue;
 
@@ -624,5 +640,15 @@ export class GitIntegrationService {
 
       this.logger.log(`Appended commit ${commit.id} to WorkLog ${workLog._id}`);
     }
+  }
+
+  private cleanCommitsForWorkLog(commits: CommitInfo[]): CommitInfo[] {
+    return commits.filter(
+      (c) =>
+        !!c.id &&
+        !!c.message &&
+        !c.message.startsWith('Merge pull request') &&
+        !c.message.startsWith('Merge branch'),
+    );
   }
 }
