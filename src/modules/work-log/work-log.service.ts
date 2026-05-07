@@ -165,7 +165,7 @@ export class WorkLogService {
 
     const data = await this.workLogModel
       .aggregate()
-      .match(keyword ? { $text: { $search: keyword } } : match)
+      .match({ ...match, ...(keyword ? { $text: { $search: keyword } } : {}) })
       .lookup({
         from: 'organizations',
         localField: 'organization',
