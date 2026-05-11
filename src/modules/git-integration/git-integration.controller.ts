@@ -168,11 +168,11 @@ export class GitIntegrationController {
   }
 
   @ApiOperation({
-    summary: 'Manually trigger polling for all Git integrations by an account',
+    summary: 'Manually trigger syncing for all Git integrations by an account',
   })
   @Auth()
-  @Post('poll')
-  async pollAllIntegrations(@CurrentAccount() account: Account) {
+  @Post('sync')
+  async syncAllIntegrations(@CurrentAccount() account: Account) {
     await this.gitIntegrationService.pollAllIntegrations(account);
     return { message: 'Polling triggered' };
   }
