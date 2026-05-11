@@ -319,12 +319,24 @@ export class GitIntegrationService {
    * Works for repos where the user cannot configure webhooks.
    */
   @Cron(CronExpression.EVERY_10_MINUTES)
-  async pollAllIntegrations(account?: Account): Promise<void> {
+  async pollAllIntegrations(
+    account?: Account,
+  ): Promise<{ message: string } | undefined> {
+    const isManual = !!account;
+    const since = isManual ? subDays(new Date(), 7) : subDays(new Date(), 1);
+
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
       ...(account ? { account: account._id } : {}),
     });
-    if (!integrations.length) return;
+    if (!integrations.length) {
+      if (isManual) {
+        return {
+          message: 'Sync thành công (không có integration nào)',
+        };
+      }
+      return;
+    }
     this.logger.debug(
       `Polling ${integrations.length} active git integration(s)`,
     );
@@ -332,9 +344,9 @@ export class GitIntegrationService {
     for (const integration of integrations) {
       try {
         if (integration.provider === GitProvider.GitHub) {
-          await this.pollGitHubIntegration(integration, !!account);
+          await this.pollGitHubIntegration(integration, isManual);
         } else if (integration.provider === GitProvider.GitLab) {
-          await this.pollGitLabIntegration(integration, !!account);
+          await this.pollGitLabIntegration(integration, isManual);
         }
       } catch (err) {
         this.logger.error(
@@ -343,6 +355,12 @@ export class GitIntegrationService {
           }`,
         );
       }
+    }
+
+    if (isManual) {
+      return {
+        message: `Sync thành công lúc ${new Date().toLocaleTimeString()}`,
+      };
     }
   }
 

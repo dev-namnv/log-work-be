@@ -173,7 +173,6 @@ export class GitIntegrationController {
   @Auth()
   @Post('sync')
   async syncAllIntegrations(@CurrentAccount() account: Account) {
-    await this.gitIntegrationService.pollAllIntegrations(account);
-    return { message: 'Polling triggered' };
+    return this.gitIntegrationService.pollAllIntegrations(account);
   }
 }
