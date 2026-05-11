@@ -166,4 +166,14 @@ export class GitIntegrationController {
     await this.gitIntegrationService.handleGitLabWebhook(id, token, payload);
     return { ok: true };
   }
+
+  @ApiOperation({
+    summary: 'Manually trigger polling for all Git integrations by an account',
+  })
+  @Auth()
+  @Post('poll')
+  async pollAllIntegrations(@CurrentAccount() account: Account) {
+    await this.gitIntegrationService.pollAllIntegrations(account);
+    return { message: 'Polling triggered' };
+  }
 }

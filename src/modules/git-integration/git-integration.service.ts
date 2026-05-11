@@ -20,7 +20,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'crypto';
-import { startOfDay } from 'date-fns';
+import { startOfDay, subDays } from 'date-fns';
 import { Model, Types } from 'mongoose';
 import environment from 'src/config/environment';
 import {
@@ -319,9 +319,10 @@ export class GitIntegrationService {
    * Works for repos where the user cannot configure webhooks.
    */
   @Cron(CronExpression.EVERY_10_MINUTES)
-  async pollAllIntegrations(): Promise<void> {
+  async pollAllIntegrations(account?: Account): Promise<void> {
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
+      ...(account ? { account: account._id } : {}),
     });
     if (!integrations.length) return;
     this.logger.debug(
@@ -331,9 +332,9 @@ export class GitIntegrationService {
     for (const integration of integrations) {
       try {
         if (integration.provider === GitProvider.GitHub) {
-          await this.pollGitHubIntegration(integration);
+          await this.pollGitHubIntegration(integration, !!account);
         } else if (integration.provider === GitProvider.GitLab) {
-          await this.pollGitLabIntegration(integration);
+          await this.pollGitLabIntegration(integration, !!account);
         }
       } catch (err) {
         this.logger.error(
@@ -347,10 +348,12 @@ export class GitIntegrationService {
 
   private async pollGitHubIntegration(
     integration: GitIntegration,
+    isManual: boolean = false,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since =
-      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = isManual
+      ? subDays(new Date(), 7)
+      : integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const commits = await this.fetchGitHubCommits(
       integration.username,
@@ -421,6 +424,7 @@ export class GitIntegrationService {
 
   private async pollGitLabIntegration(
     integration: GitIntegration,
+    isManual: boolean = false,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
     const since =
