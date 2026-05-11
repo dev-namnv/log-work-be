@@ -323,7 +323,7 @@ export class GitIntegrationService {
     account?: Account,
   ): Promise<{ message: string } | undefined> {
     const isManual = !!account;
-    const since = isManual ? subDays(new Date(), 7) : subDays(new Date(), 1);
+    let since = isManual ? subDays(new Date(), 7) : subDays(new Date(), 1);
 
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
@@ -342,11 +342,14 @@ export class GitIntegrationService {
     );
 
     for (const integration of integrations) {
+      if (!isManual && integration.lastPolledAt) {
+        since = integration.lastPolledAt;
+      }
       try {
         if (integration.provider === GitProvider.GitHub) {
-          await this.pollGitHubIntegration(integration, isManual);
+          await this.pollGitHubIntegration(integration, since);
         } else if (integration.provider === GitProvider.GitLab) {
-          await this.pollGitLabIntegration(integration, isManual);
+          await this.pollGitLabIntegration(integration, since);
         }
       } catch (err) {
         this.logger.error(
@@ -366,12 +369,9 @@ export class GitIntegrationService {
 
   private async pollGitHubIntegration(
     integration: GitIntegration,
-    isManual: boolean = false,
+    since: Date,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since = isManual
-      ? subDays(new Date(), 7)
-      : integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const commits = await this.fetchGitHubCommits(
       integration.username,
@@ -442,11 +442,10 @@ export class GitIntegrationService {
 
   private async pollGitLabIntegration(
     integration: GitIntegration,
+    since: Date,
     isManual: boolean = false,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since =
-      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const commits = await this.fetchGitLabCommits(
       integration.username,
