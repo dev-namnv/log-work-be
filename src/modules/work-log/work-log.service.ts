@@ -3,12 +3,14 @@ import {
   ForbiddenException,
   GoneException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import {
   addDays,
+  addMinutes,
   differenceInMinutes,
   eachDayOfInterval,
   endOfMonth,
@@ -36,6 +38,8 @@ import { WorkLogByOrganizationDto } from './dto/workLogByOrganization.dto';
 
 @Injectable()
 export class WorkLogService {
+  private readonly logger = new Logger(WorkLogService.name);
+
   constructor(
     @InjectModel(WorkLog.name) private workLogModel: Model<WorkLog>,
     @InjectModel(Organization.name)
@@ -63,6 +67,50 @@ export class WorkLogService {
     const totalMinutes =
       endH * 60 + endM - (startH * 60 + startM) - schedule.lunchBreakMinutes;
     return Math.round((totalMinutes / 60) * 100) / 100;
+  }
+
+  /**
+   * Any work log from the previous day left without a checkOut is
+   * auto-checked-out so the day reaches the organization's standard hours.
+   * checkOut = checkIn + (standardHoursPerDay + lunch break) so the stored net
+   * `hours` equals the org's standardHoursPerDay. Called by WorkLogScheduler.
+   */
+  async autoCheckoutMissed(): Promise<void> {
+    const start = startOfDay(addDays(new Date(), -1));
+    const end = startOfDay(new Date());
+
+    const logs = await this.workLogModel.find({
+      checkOut: null,
+      date: { $gte: start, $lt: end },
+    });
+    if (!logs.length) return;
+
+    this.logger.debug(`Auto-checkout ${logs.length} missed work log(s)`);
+
+    for (const log of logs) {
+      try {
+        const org = await this.organizationModel.findById(log.organization);
+        const schedule = org?.workSchedule ?? DEFAULT_WORK_SCHEDULE;
+        const standardHours = this.getStandardHoursPerDay(schedule);
+        const rawMinutes =
+          standardHours * 60 +
+          (log.skipLunchBreak ? 0 : schedule.lunchBreakMinutes);
+
+        const checkOut = addMinutes(log.checkIn, rawMinutes);
+        log.checkOut = checkOut;
+        log.hours = this.getWorkedHoursByDay({
+          checkIn: log.checkIn,
+          checkOut,
+          breakMinutes: schedule.lunchBreakMinutes,
+          skipLunchBreak: log.skipLunchBreak,
+        });
+        await log.save();
+      } catch (err) {
+        this.logger.error(
+          `Auto-checkout failed for log=${log._id}: ${(err as Error)?.message}`,
+        );
+      }
+    }
   }
 
   async create(account: Account, dto: CreateWorkLogDto): Promise<WorkLog> {

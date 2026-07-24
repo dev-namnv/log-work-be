@@ -6,6 +6,7 @@ import { WorkLogShare, WorkLogShareSchema } from 'src/schemas/work-log-share';
 import { UserRefModule } from '../user-ref/user-ref.module';
 import { WorkLogShareController } from './work-log-share.controller';
 import { WorkLogController } from './work-log.controller';
+import { WorkLogScheduler } from './work-log.scheduler';
 import { WorkLogService } from './work-log.service';
 
 @Module({
@@ -18,7 +19,7 @@ import { WorkLogService } from './work-log.service';
     UserRefModule,
   ],
   controllers: [WorkLogController, WorkLogShareController],
-  providers: [WorkLogService],
+  providers: [WorkLogService, WorkLogScheduler],
   exports: [WorkLogService],
 })
 export class WorkLogModule {}

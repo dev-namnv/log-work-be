@@ -91,3 +91,21 @@ export interface GitHubRepoCommit {
     committer?: { date?: string };
   };
 }
+
+export interface GitHubSearchCommitItem {
+  sha: string;
+  html_url?: string;
+  commit: {
+    message: string;
+    author?: { name?: string; email?: string; date?: string };
+    committer?: { name?: string; date?: string };
+  };
+  repository: {
+    full_name: string;
+  };
+}
+
+export interface GitHubSearchCommitsResponse {
+  total_count: number;
+  items: GitHubSearchCommitItem[];
+}

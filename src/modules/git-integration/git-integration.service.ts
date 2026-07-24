@@ -20,7 +20,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'crypto';
-import { startOfDay } from 'date-fns';
+import { startOfDay, subDays } from 'date-fns';
 import { Model, Types } from 'mongoose';
 import environment from 'src/config/environment';
 import {
@@ -318,7 +318,7 @@ export class GitIntegrationService {
    * Polls GitHub/GitLab APIs for new commits from all active integrations.
    * Works for repos where the user cannot configure webhooks.
    */
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  @Cron(CronExpression.EVERY_MINUTE)
   async pollAllIntegrations(): Promise<void> {
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
@@ -349,8 +349,10 @@ export class GitIntegrationService {
     integration: GitIntegration,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since =
-      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = subDays(integration.lastPolledAt ?? new Date(), 3);
+    this.logger.debug(
+      `[GitHub] polling for ${integration.username} since ${since.toISOString()}`,
+    );
 
     const commits = await this.fetchGitHubCommits(
       integration.username,
@@ -415,6 +417,10 @@ export class GitIntegrationService {
         );
       }
     }
+
+    this.logger.debug(
+      `[GitHub] fetched ${commits.length} commit(s) for ${username} since ${sinceIso}`,
+    );
 
     return this.cleanCommitsForWorkLog(commits);
   }
