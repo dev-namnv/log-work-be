@@ -9,6 +9,7 @@ import { Organization, OrganizationSchema } from 'src/schemas/organization';
 import { WorkLog, WorkLogSchema } from 'src/schemas/work-log';
 import { UserRefModule } from '../user-ref/user-ref.module';
 import { GitIntegrationController } from './git-integration.controller';
+import { GitIntegrationScheduler } from './git-integration.scheduler';
 import { GitIntegrationService } from './git-integration.service';
 
 @Module({
@@ -22,7 +23,7 @@ import { GitIntegrationService } from './git-integration.service';
     UserRefModule,
   ],
   controllers: [GitIntegrationController],
-  providers: [GitIntegrationService],
+  providers: [GitIntegrationService, GitIntegrationScheduler],
   exports: [GitIntegrationService],
 })
 export class GitIntegrationModule {}

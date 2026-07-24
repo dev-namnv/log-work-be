@@ -23,6 +23,7 @@ import {
 } from 'src/interfaces/GitIntergration';
 import { Account } from 'src/schemas/account';
 import { GitProvider } from 'src/schemas/git-integration';
+import { SyncGitDto } from './dto/syncGit.dto';
 import { GitIntegrationService } from './git-integration.service';
 
 @SkipCache()
@@ -172,7 +173,10 @@ export class GitIntegrationController {
   })
   @Auth()
   @Post('sync')
-  async syncAllIntegrations(@CurrentAccount() account: Account) {
-    return this.gitIntegrationService.pollAllIntegrations(account);
+  async syncAllIntegrations(
+    @CurrentAccount() account: Account,
+    @Query() { subDays }: SyncGitDto,
+  ) {
+    return this.gitIntegrationService.pollAllIntegrations(account, subDays);
   }
 }

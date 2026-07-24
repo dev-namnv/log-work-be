@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import {
@@ -314,16 +313,24 @@ export class GitIntegrationService {
   // ─── Polling (cron) ──────────────────────────────────────────────────────
 
   /**
-   * Runs every 10 minutes.
    * Polls GitHub/GitLab APIs for new commits from all active integrations.
-   * Works for repos where the user cannot configure webhooks.
+   * Works for repos where the user cannot configure webhooks. Called on a
+   * schedule by GitIntegrationScheduler, or manually via the sync endpoint.
+   *
+   * @param account   when provided, only that account's integrations are polled
+   *                  (manual sync); the return message is populated.
+   * @param subDaysAgo how many days back to look for commits on a manual sync
+   *                   (default 7). Ignored for scheduled polls, which use each
+   *                   integration's `lastPolledAt`.
    */
-  @Cron(CronExpression.EVERY_10_MINUTES)
   async pollAllIntegrations(
     account?: Account,
+    subDaysAgo = 7,
   ): Promise<{ message: string } | undefined> {
     const isManual = !!account;
-    let since = isManual ? subDays(new Date(), 7) : subDays(new Date(), 1);
+    let since = isManual
+      ? subDays(new Date(), subDaysAgo)
+      : subDays(new Date(), 1);
 
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
