@@ -166,4 +166,13 @@ export class GitIntegrationController {
     await this.gitIntegrationService.handleGitLabWebhook(id, token, payload);
     return { ok: true };
   }
+
+  @ApiOperation({
+    summary: 'Manually trigger syncing for all Git integrations by an account',
+  })
+  @Auth()
+  @Post('sync')
+  async syncAllIntegrations(@CurrentAccount() account: Account) {
+    return this.gitIntegrationService.pollAllIntegrations(account);
+  }
 }

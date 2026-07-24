@@ -318,22 +318,38 @@ export class GitIntegrationService {
    * Polls GitHub/GitLab APIs for new commits from all active integrations.
    * Works for repos where the user cannot configure webhooks.
    */
-  @Cron(CronExpression.EVERY_MINUTE)
-  async pollAllIntegrations(): Promise<void> {
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async pollAllIntegrations(
+    account?: Account,
+  ): Promise<{ message: string } | undefined> {
+    const isManual = !!account;
+    let since = isManual ? subDays(new Date(), 7) : subDays(new Date(), 1);
+
     const integrations = await this.gitIntegrationModel.find({
       isActive: true,
+      ...(account ? { account: account._id } : {}),
     });
-    if (!integrations.length) return;
+    if (!integrations.length) {
+      if (isManual) {
+        return {
+          message: 'Sync thành công (không có integration nào)',
+        };
+      }
+      return;
+    }
     this.logger.debug(
       `Polling ${integrations.length} active git integration(s)`,
     );
 
     for (const integration of integrations) {
+      if (!isManual && integration.lastPolledAt) {
+        since = integration.lastPolledAt;
+      }
       try {
         if (integration.provider === GitProvider.GitHub) {
-          await this.pollGitHubIntegration(integration);
+          await this.pollGitHubIntegration(integration, since);
         } else if (integration.provider === GitProvider.GitLab) {
-          await this.pollGitLabIntegration(integration);
+          await this.pollGitLabIntegration(integration, since);
         }
       } catch (err) {
         this.logger.error(
@@ -343,13 +359,19 @@ export class GitIntegrationService {
         );
       }
     }
+
+    if (isManual) {
+      return {
+        message: `Sync thành công lúc ${new Date().toLocaleTimeString()}`,
+      };
+    }
   }
 
   private async pollGitHubIntegration(
     integration: GitIntegration,
+    since: Date,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since = subDays(integration.lastPolledAt ?? new Date(), 3);
     this.logger.debug(
       `[GitHub] polling for ${integration.username} since ${since.toISOString()}`,
     );
@@ -427,10 +449,10 @@ export class GitIntegrationService {
 
   private async pollGitLabIntegration(
     integration: GitIntegration,
+    since: Date,
+    isManual: boolean = false,
   ): Promise<void> {
     const accessToken = this.decrypt(integration.accessToken);
-    const since =
-      integration.lastPolledAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const commits = await this.fetchGitLabCommits(
       integration.username,
