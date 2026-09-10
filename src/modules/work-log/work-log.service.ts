@@ -14,6 +14,7 @@ import {
   differenceInMinutes,
   eachDayOfInterval,
   endOfMonth,
+  format,
   getDay,
   startOfDay,
   startOfMonth,
@@ -25,9 +26,11 @@ import {
   Organization,
   WorkSchedule,
 } from 'src/schemas/organization';
+import { HolidayType } from 'src/schemas/holiday';
 import { WorkLog } from 'src/schemas/work-log';
 import { WorkLogShare } from 'src/schemas/work-log-share';
 import PaginationUtil, { PaginationResponse } from 'src/utils/pagination.util';
+import { HolidayService } from '../holiday/holiday.service';
 import { UserRefService } from '../user-ref/user-ref.service';
 import { CreateShareLinkDto } from './dto/createShareLink.dto';
 import { CreateWorkLogDto } from './dto/createWorkLog.dto';
@@ -47,14 +50,28 @@ export class WorkLogService {
     @InjectModel(WorkLogShare.name)
     private workLogShareModel: Model<WorkLogShare>,
     private userRefService: UserRefService,
+    private holidayService: HolidayService,
   ) {}
 
-  private getStandardWorkingDays(year: number, month: number): number {
+  // Ngày công chuẩn: T2–T6 trừ lễ (Off), cộng ngày làm bù cuối tuần (Workday).
+  private async getStandardWorkingDays(
+    year: number,
+    month: number,
+  ): Promise<number> {
     const start = startOfMonth(new Date(year, month - 1));
     const end = endOfMonth(start);
-    return eachDayOfInterval({ start, end }).filter(
-      (day) => getDay(day) !== 0 && getDay(day) !== 6,
-    ).length;
+    const holidays = await this.holidayService.findByMonth(year, month);
+    const off = new Set(
+      holidays.filter((h) => h.type === HolidayType.OFF).map((h) => h.date),
+    );
+    const workday = new Set(
+      holidays.filter((h) => h.type === HolidayType.WORKDAY).map((h) => h.date),
+    );
+    return eachDayOfInterval({ start, end }).filter((day) => {
+      const key = format(day, 'yyyy-MM-dd');
+      const isWeekend = getDay(day) === 0 || getDay(day) === 6;
+      return isWeekend ? workday.has(key) : !off.has(key);
+    }).length;
   }
 
   /**
@@ -318,7 +335,7 @@ export class WorkLogService {
 
     const totalHours =
       Math.round(logs.reduce((sum, l) => sum + l.hours, 0) * 100) / 100;
-    const standardWorkDays = this.getStandardWorkingDays(year, month);
+    const standardWorkDays = await this.getStandardWorkingDays(year, month);
 
     // Resolve schedule: prefer org schedule, fall back to default
     let schedule = DEFAULT_WORK_SCHEDULE;
@@ -394,7 +411,7 @@ export class WorkLogService {
       })
       .lean();
 
-    const standardWorkDays = this.getStandardWorkingDays(year, month);
+    const standardWorkDays = await this.getStandardWorkingDays(year, month);
     const schedule: WorkSchedule = org.workSchedule ?? DEFAULT_WORK_SCHEDULE;
     const standardHoursPerDay = this.getStandardHoursPerDay(schedule);
     const totalStandardHours =
@@ -554,7 +571,7 @@ export class WorkLogService {
 
     const totalHours =
       Math.round(logs.reduce((sum, l) => sum + l.hours, 0) * 100) / 100;
-    const standardWorkDays = this.getStandardWorkingDays(year, month);
+    const standardWorkDays = await this.getStandardWorkingDays(year, month);
 
     let schedule = DEFAULT_WORK_SCHEDULE;
     if (organizationId) {

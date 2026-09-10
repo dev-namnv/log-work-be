@@ -41,6 +41,14 @@ export class HolidayService {
     return this.holidayModel.find(filter).sort({ date: 1 }).lean();
   }
 
+  // Holidays trong 1 tháng, dùng để tính ngày công chuẩn.
+  findByMonth(year: number, month: number) {
+    const mm = String(month).padStart(2, '0');
+    return this.holidayModel
+      .find({ date: { $regex: `^${year}-${mm}-` } })
+      .lean();
+  }
+
   async create(dto: CreateHolidayDto) {
     const exists = await this.holidayModel.exists({ date: dto.date });
     if (exists)
