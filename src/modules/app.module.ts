@@ -20,6 +20,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ClockModule } from './clock/clock.module';
 import { GitIntegrationModule } from './git-integration/git-integration.module';
+import { HolidayModule } from './holiday/holiday.module';
 import { OrganizationModule } from './organization/organization.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { UserRefModule } from './user-ref/user-ref.module';
@@ -49,6 +50,7 @@ import { WorkLogModule } from './work-log/work-log.module';
     ClockModule,
     GitIntegrationModule,
     UserRefModule,
+    HolidayModule,
   ],
   controllers: [AppController],
   providers: [
