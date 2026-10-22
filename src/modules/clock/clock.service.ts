@@ -8,6 +8,7 @@ import { addDays, startOfDay } from 'date-fns';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Account } from 'src/schemas/account';
 import { WorkLog } from 'src/schemas/work-log';
+import { UpdateWorkLogDto } from '../work-log/dto/updateWorkLog.dto';
 import { WorkLogService } from '../work-log/work-log.service';
 import { ClockCheckInDto } from './dto/clockCheckIn.dto';
 import { ClockCheckOutDto } from './dto/clockCheckOut.dto';
@@ -25,12 +26,46 @@ export class ClockService {
     return { today, tomorrow: addDays(today, 1) };
   }
 
-  async checkIn(account: Account, dto: ClockCheckInDto): Promise<WorkLog> {
-    return this.workLogService.create(account, {
-      organizationId: dto.organizationId,
-      checkIn: new Date().toISOString(),
-      note: dto.note,
+  async checkIn(account: Account, dto: ClockCheckInDto) {
+    const { today, tomorrow } = this.getTodayBounds();
+
+    const log = await this.workLogModel.findOne({
+      account: account._id,
+      organization: new Types.ObjectId(dto.organizationId),
+      date: { $gte: today, $lt: tomorrow },
     });
+
+    // First check-in of the day -> create a new work log
+    if (!log) {
+      return this.workLogService.create(account, {
+        organizationId: dto.organizationId,
+        checkIn: new Date().toISOString(),
+        note: dto.note,
+      });
+    }
+
+    // Subsequent check-in (OT / make-up) -> must close the previous session first
+    const lastItem = log.items[log.items.length - 1];
+    if (lastItem && !lastItem.checkOut) {
+      throw new BadRequestException(
+        'Please check out before checking in again',
+      );
+    }
+
+    const items = log.items.map((i) => ({
+      checkIn: i.checkIn.toISOString(),
+      checkOut: i.checkOut ? i.checkOut.toISOString() : undefined,
+    }));
+    items.push({ checkIn: new Date().toISOString(), checkOut: undefined });
+
+    const updatePayload: UpdateWorkLogDto = { items };
+    if (dto.note !== undefined) updatePayload.note = dto.note;
+
+    return this.workLogService.update(
+      account,
+      log._id.toString(),
+      updatePayload,
+    );
   }
 
   async checkOut(account: Account, dto: ClockCheckOutDto) {
@@ -48,12 +83,23 @@ export class ClockService {
       );
     }
 
-    if (log.checkOut) {
+    let hoursLogItems = log.items.map((i) => ({
+      checkIn: i.checkIn.toISOString(),
+      checkOut: i.checkOut ? i.checkOut.toISOString() : undefined,
+    }));
+    const lastItem = hoursLogItems.pop();
+
+    if (!lastItem) {
+      throw new BadRequestException('No checkin was found');
+    }
+    if (lastItem.checkOut) {
       throw new BadRequestException('Already checked out today');
     }
 
-    const updatePayload: Record<string, any> = {
-      checkOut: new Date().toISOString(),
+    lastItem.checkOut = new Date().toISOString();
+    hoursLogItems = [...hoursLogItems, lastItem];
+    const updatePayload: UpdateWorkLogDto = {
+      items: hoursLogItems,
     };
     if (dto.note !== undefined) updatePayload.note = dto.note;
 
@@ -82,8 +128,8 @@ export class ClockService {
 
     return {
       date: today,
-      checkedIn: !!log,
-      checkedOut: !!log?.checkOut,
+      checkedIn: log?.items?.length > 0,
+      checkedOut: log?.items?.some((i) => !!i.checkOut),
       log: log ?? null,
     };
   }

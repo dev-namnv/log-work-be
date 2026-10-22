@@ -21,13 +21,13 @@ import {
 } from 'date-fns';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Account } from 'src/schemas/account';
+import { HolidayType } from 'src/schemas/holiday';
 import {
   DEFAULT_WORK_SCHEDULE,
   Organization,
   WorkSchedule,
 } from 'src/schemas/organization';
-import { HolidayType } from 'src/schemas/holiday';
-import { WorkLog } from 'src/schemas/work-log';
+import { HoursLogItem, WorkLog } from 'src/schemas/work-log';
 import { WorkLogShare } from 'src/schemas/work-log-share';
 import PaginationUtil, { PaginationResponse } from 'src/utils/pagination.util';
 import { HolidayService } from '../holiday/holiday.service';
@@ -97,7 +97,7 @@ export class WorkLogService {
     const end = startOfDay(new Date());
 
     const logs = await this.workLogModel.find({
-      checkOut: null,
+      'items.checkOut': null,
       date: { $gte: start, $lt: end },
     });
     if (!logs.length) return;
@@ -112,12 +112,12 @@ export class WorkLogService {
         const rawMinutes =
           standardHours * 60 +
           (log.skipLunchBreak ? 0 : schedule.lunchBreakMinutes);
+        const lastItem = log.items.pop();
 
-        const checkOut = addMinutes(log.checkIn, rawMinutes);
-        log.checkOut = checkOut;
+        const checkOut = addMinutes(lastItem.checkIn, rawMinutes);
+        lastItem.checkOut = checkOut;
         log.hours = this.getWorkedHoursByDay({
-          checkIn: log.checkIn,
-          checkOut,
+          items: [...log.items, lastItem],
           breakMinutes: schedule.lunchBreakMinutes,
           skipLunchBreak: log.skipLunchBreak,
         });
@@ -181,9 +181,9 @@ export class WorkLogService {
       );
     }
 
+    const items = [{ checkIn, checkOut }];
     const hours = this.getWorkedHoursByDay({
-      checkIn,
-      checkOut,
+      items,
       breakMinutes: org.workSchedule.lunchBreakMinutes,
       skipLunchBreak: dto.skipLunchBreak ?? false,
     });
@@ -193,8 +193,7 @@ export class WorkLogService {
         account: account._id,
         organization: new Types.ObjectId(dto.organizationId),
         date: dayStart,
-        checkIn,
-        checkOut,
+        items,
         hours,
         note: dto.note ?? null,
         skipLunchBreak: dto.skipLunchBreak ?? false,
@@ -273,10 +272,15 @@ export class WorkLogService {
     );
     if (!organization) throw new NotFoundException('Organization not found');
 
-    const checkIn = dto.checkIn ? new Date(dto.checkIn) : log.checkIn;
-    const checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
+    const items = dto.items
+      ? dto.items.map((i) => ({
+          checkIn: new Date(i.checkIn),
+          checkOut: i.checkOut ? new Date(i.checkOut) : null,
+        }))
+      : log.items;
 
-    if (checkOut && checkOut <= checkIn) {
+    // If any item's checkout is after checkin
+    if (items.some((i) => i.checkOut && i.checkOut <= i.checkIn)) {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
@@ -286,16 +290,14 @@ export class WorkLogService {
         : log.skipLunchBreak;
 
     const hours = this.getWorkedHoursByDay({
-      checkIn,
-      checkOut,
+      items,
       breakMinutes: organization.workSchedule.lunchBreakMinutes,
       skipLunchBreak,
     });
 
     const updatePayload: Partial<WorkLog> = {
       hours,
-      checkIn,
-      checkOut,
+      items,
       skipLunchBreak,
     };
     if (dto.note !== undefined) updatePayload.note = dto.note;
@@ -312,6 +314,29 @@ export class WorkLogService {
     }
     await log.deleteOne();
     return { message: 'Work log deleted' };
+  }
+
+  /**
+   * One-off migration: convert legacy work logs that stored a single
+   * `checkIn`/`checkOut` pair into the new `items` array, then drop the old
+   * fields. Idempotent - only touches docs that still lack `items`.
+   */
+  async migrateToItems(): Promise<{ migrated: number }> {
+    const res = await this.workLogModel.updateMany(
+      { items: { $exists: false } },
+      [
+        {
+          $set: {
+            items: [{ checkIn: '$checkIn', checkOut: '$checkOut' }],
+          },
+        },
+        { $unset: ['checkIn', 'checkOut'] },
+      ],
+    );
+    this.logger.log(
+      `Migrated ${res.modifiedCount} legacy work log(s) to items`,
+    );
+    return { migrated: res.modifiedCount };
   }
 
   async monthlyReport(account: Account, dto: MonthlyReportDto) {
@@ -466,18 +491,30 @@ export class WorkLogService {
   }
 
   private getWorkedHoursByDay(params: {
-    checkIn: Date;
-    checkOut: Date | null;
+    items: HoursLogItem[];
     breakMinutes: number;
     skipLunchBreak?: boolean;
   }): number {
-    const { checkIn, checkOut, skipLunchBreak } = params;
-    if (!checkOut) return 0;
-    const rawHours =
-      Math.round((differenceInMinutes(checkOut, checkIn) / 60) * 100) / 100;
-    return skipLunchBreak
-      ? rawHours
-      : Math.round((rawHours - params.breakMinutes / 60) * 100) / 100;
+    const { items, skipLunchBreak } = params;
+    if (!items.length) return 0;
+    const rawHours = items.reduce((accumulator, currentValue) => {
+      // Skip open items (no checkOut) so differenceInMinutes never yields NaN
+      if (!currentValue?.checkOut || !currentValue.checkIn) return accumulator;
+      return (
+        accumulator +
+        Math.round(
+          (differenceInMinutes(currentValue.checkOut, currentValue.checkIn) /
+            60) *
+            100,
+        ) /
+          100
+      );
+    }, 0);
+    // No closed session yet -> no worked hours, and don't deduct lunch (would go negative)
+    if (rawHours <= 0) return 0;
+    if (skipLunchBreak) return rawHours;
+    const net = Math.round((rawHours - params.breakMinutes / 60) * 100) / 100;
+    return Math.max(0, net);
   }
 
   // ─────────────────────── Share Link ───────────────────────

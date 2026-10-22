@@ -13,6 +13,7 @@ import { Auth } from 'src/decorators/auth.decorator';
 import { CurrentAccount } from 'src/decorators/currentAccount.decorator';
 import { SkipCache } from 'src/decorators/skip-cache.decorator';
 import { MongoIdDto } from 'src/dto/mongoId.dto';
+import { AccountRole } from 'src/interfaces/Account';
 import { Account } from 'src/schemas/account';
 import { CreateWorkLogDto } from './dto/createWorkLog.dto';
 import { MonthlyReportDto } from './dto/monthlyReport.dto';
@@ -35,6 +36,17 @@ export class WorkLogController {
     @Body() dto: CreateWorkLogDto,
   ) {
     return this.workLogService.create(account, dto);
+  }
+
+  @ApiTags('WorkLog')
+  @ApiOperation({
+    summary:
+      'One-off: migrate legacy checkIn/checkOut work logs to the items array',
+  })
+  @Auth(AccountRole.ADMIN)
+  @Post('/migrate-to-items')
+  async migrateToItems() {
+    return this.workLogService.migrateToItems();
   }
 
   @ApiTags('WorkLog')

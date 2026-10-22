@@ -5,6 +5,14 @@ import { Organization } from './organization';
 
 export const WORK_LOG_COLLECTION = 'work_logs';
 
+export class HoursLogItem {
+  @Prop({ required: true })
+  checkIn: Date;
+
+  @Prop({ default: null })
+  checkOut: Date;
+}
+
 @Schema({ timestamps: true, collection: WORK_LOG_COLLECTION })
 export class WorkLog extends Document {
   _id: Types.ObjectId;
@@ -19,10 +27,7 @@ export class WorkLog extends Document {
   date: Date;
 
   @Prop({ required: true })
-  checkIn: Date;
-
-  @Prop({ default: null })
-  checkOut: Date;
+  items: HoursLogItem[];
 
   /** Computed and stored: differenceInMinutes(checkOut, checkIn) / 60 */
   @Prop({ required: true, min: 0 })
