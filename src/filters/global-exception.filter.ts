@@ -23,10 +23,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Mongoose validation/cast errors are client errors (bad input) -> 400, not 500
+    const isMongooseBadInput =
+      exception instanceof Error &&
+      (exception.name === 'ValidationError' || exception.name === 'CastError');
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : isMongooseBadInput
+          ? HttpStatus.BAD_REQUEST
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const exceptionResponse =
       exception instanceof HttpException ? exception.getResponse() : null;
@@ -37,7 +44,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           'message' in exceptionResponse
           ? (exceptionResponse as any).message
           : exception.message
-        : 'Internal server error';
+        : isMongooseBadInput
+          ? (exception as Error).message
+          : 'Internal server error';
 
     const errorResponse = {
       statusCode: status,
