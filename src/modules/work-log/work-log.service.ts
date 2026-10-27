@@ -112,12 +112,10 @@ export class WorkLogService {
         const rawMinutes =
           standardHours * 60 +
           (log.skipLunchBreak ? 0 : schedule.lunchBreakMinutes);
-        const lastItem = log.items.pop();
-
-        const checkOut = addMinutes(lastItem.checkIn, rawMinutes);
-        lastItem.checkOut = checkOut;
+        const lastItem = log.items[log.items.length - 1];
+        lastItem.checkOut = addMinutes(lastItem.checkIn, rawMinutes);
         log.hours = this.getWorkedHoursByDay({
-          items: [...log.items, lastItem],
+          items: log.items,
           breakMinutes: schedule.lunchBreakMinutes,
           skipLunchBreak: log.skipLunchBreak,
         });
