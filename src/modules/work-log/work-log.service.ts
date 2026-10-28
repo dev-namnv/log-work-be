@@ -119,6 +119,7 @@ export class WorkLogService {
           breakMinutes: schedule.lunchBreakMinutes,
           skipLunchBreak: log.skipLunchBreak,
         });
+        log.markModified('items'); // items is a Mixed array; in-place mutation isn't auto-tracked
         await log.save();
       } catch (err) {
         this.logger.error(
