@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { PassportStrategy } from '@nestjs/passport';
 import { Model } from 'mongoose';
@@ -37,7 +33,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!account) {
       // Account không tồn tại - có thể đã bị xóa
-      throw new ForbiddenException('Account not found or has been deleted');
+      throw new UnauthorizedException('Account not found or has been deleted');
     }
 
     return account;
