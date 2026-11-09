@@ -6,15 +6,16 @@ export class JwtAuthOptionalGuard extends AuthGuard('jwt') {
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
 
-    // Check cả authorization cookie accessToken
-    const hasAccessTokenCookie = !!request.cookies?.accessToken;
+    // Khớp với JwtStrategy: token lấy từ header "Authorization: Bearer ..."
+    const hasBearerToken =
+      request.headers?.authorization?.startsWith('Bearer ');
 
-    // Nếu không có, cho phép tiếp tục với user = null
-    if (!hasAccessTokenCookie) {
+    // Không có token → cho qua với user = null
+    if (!hasBearerToken) {
       return true;
     }
 
-    // Có ít → gọi strategy để validate
+    // Có token → gọi strategy để validate
     return super.canActivate(context) as boolean | Promise<boolean>;
   }
 
