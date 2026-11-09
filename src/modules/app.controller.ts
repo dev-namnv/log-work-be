@@ -41,7 +41,7 @@ export class AppController {
 
   @ApiTags('App')
   @ApiOperation({
-    summary: 'Test AuthOptional with cookie (no login required)',
+    summary: 'Test AuthOptional with Bearer token (no login required)',
   })
   @SkipCache()
   @AuthOptional()
